@@ -1,0 +1,17 @@
+{
+  "name": "cinetrack-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../.env.local --watch src/server.js",
+    "start": "node --env-file-if-exists=../.env.local src/server.js",
+    "test": "node --env-file-if-exists=../.env.local --test",
+    "check:db": "node --env-file-if-exists=../.env.local src/checkDatabase.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.1.0",
+    "mongoose": "^9.11.2"
+  }
+}

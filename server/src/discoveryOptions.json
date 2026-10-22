@@ -1,0 +1,22 @@
+{
+  "moods": {
+    "feel-good": {
+      "label": "Feel-good",
+      "genres": ["35", "10751", "16"]
+    },
+    "thrilling": {
+      "label": "Thrilling",
+      "genres": ["53", "9648", "80"]
+    },
+    "adventure": {
+      "label": "Big adventure",
+      "genres": ["28", "12", "14"]
+    }
+  },
+  "runtimeOptions": [
+    { "value": "90", "label": "Up to 90 minutes" },
+    { "value": "120", "label": "Up to 2 hours" },
+    { "value": "150", "label": "Up to 2.5 hours" }
+  ]
+}
+
