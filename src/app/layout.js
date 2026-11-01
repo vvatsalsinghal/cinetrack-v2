@@ -1,5 +1,7 @@
 import "./globals.css";
 import { CineTrackProvider } from "@/components/CineTrackProvider";
+import CinemaChatbot from "@/components/CinemaChatbot";
+import CinemaAmbientBackground from "@/components/CinemaAmbientBackground";
 
 export const metadata = {
   title: "CineTrack — Your personal cinema companion",
@@ -17,7 +19,11 @@ export default function RootLayout({ children }) {
         >
           Skip to main content
         </a>
-        <CineTrackProvider>{children}</CineTrackProvider>
+        <CineTrackProvider>
+          <CinemaAmbientBackground />
+          {children}
+          <CinemaChatbot />
+        </CineTrackProvider>
       </body>
     </html>
   );

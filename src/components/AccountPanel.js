@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
 const baseInputClass =
@@ -107,8 +107,6 @@ export default function AccountPanel() {
       </section>
     );
   }
-
-
 
   return (
     <section className="max-w-xl rounded-xl border border-line bg-surface p-6 sm:p-8">

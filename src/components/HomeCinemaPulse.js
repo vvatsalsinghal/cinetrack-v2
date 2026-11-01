@@ -24,7 +24,7 @@ export default async function HomeCinemaPulse() {
 
   try {
     const data = await getApiNewsArticles({
-      region: "all",
+      region: "india",
       language: "all",
       limit: 3,
     });
@@ -44,7 +44,7 @@ export default async function HomeCinemaPulse() {
         <div className="mb-10 flex flex-col gap-4 sm:mb-12 sm:flex-row sm:items-end sm:justify-between">
           <SectionHeading
             id="home-cinema-pulse-title"
-            eyebrow="BREAKING STORIES & FESTIVAL DISPATCHES"
+            eyebrow="INDIAN CINEMA DISPATCHES & HEADLINES"
             title="Cinema Pulse."
           />
           <Link

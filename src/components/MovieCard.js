@@ -1,14 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-
-const artworkClasses = {
-  dusk: "movie-art--dusk",
-  orbit: "movie-art--orbit",
-  garden: "movie-art--garden",
-};
 
 function isPreview(value) {
   return (
@@ -28,8 +22,7 @@ function isPreview(value) {
 }
 
 export default function MovieCard({ movie }) {
-  const isDemo = movie.source === "demo";
-  const artworkClass = artworkClasses[movie.artwork] ?? "movie-art--unavailable";
+  const movieId = movie.tmdbId || movie.id;
   const [previewRequest, setPreviewRequest] = useState(0);
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState("");
@@ -41,8 +34,14 @@ export default function MovieCard({ movie }) {
   const isPreviewActive =
     (isPointerOver || isFocused || isPreviewPinned) && !isPreviewDismissed;
 
+  const posterCardRef = useRef(null);
+  const [tiltStyle, setTiltStyle] = useState({
+    transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
+  });
+  const [glareStyle, setGlareStyle] = useState({ opacity: 0 });
+
   useEffect(() => {
-    if (previewRequest === 0) {
+    if (previewRequest === 0 || !movie.tmdbId) {
       return;
     }
 
@@ -85,7 +84,7 @@ export default function MovieCard({ movie }) {
   }, [movie.tmdbId, previewRequest]);
 
   function requestPreview() {
-    if (!preview && !isLoadingPreview) {
+    if (!preview && !isLoadingPreview && movie.tmdbId) {
       setPreviewError("");
       setPreviewRequest((request) => request + 1);
     }
@@ -130,6 +129,40 @@ export default function MovieCard({ movie }) {
     }
   }
 
+  function handlePosterMouseMove(event) {
+    if (event.pointerType === "touch" || isPreviewActive) return;
+    const rect = posterCardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const normX = (x / rect.width) * 2 - 1;
+    const normY = (y / rect.height) * 2 - 1;
+
+    setTiltStyle({
+      transform: `perspective(800px) rotateX(${-normY * 9}deg) rotateY(${normX * 9}deg) scale3d(1.025, 1.025, 1.025)`,
+      transition: "transform 0.08s ease-out",
+    });
+
+    setGlareStyle({
+      opacity: 1,
+      background: `radial-gradient(circle 220px at ${(x / rect.width) * 100}% ${(y / rect.height) * 100}%, rgba(255, 255, 255, 0.22), transparent 70%)`,
+    });
+  }
+
+  function handlePosterMouseLeave() {
+    setTiltStyle({
+      transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
+      transition: "transform 0.4s ease-out",
+    });
+    setGlareStyle({
+      opacity: 0,
+      transition: "opacity 0.4s ease-out",
+    });
+  }
+
+  const movieDetailHref = movie.tmdbId ? `/movie/${movie.tmdbId}` : `/movie/${movieId}`;
+
   return (
     <article
       className="group min-w-0"
@@ -137,55 +170,45 @@ export default function MovieCard({ movie }) {
       onPointerLeave={() => {
         setIsPointerOver(false);
         setIsPreviewDismissed(false);
+        handlePosterMouseLeave();
       }}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
     >
-      <div className="movie-art relative aspect-[2/3]">
-        {movie.source === "tmdb" ? (
-          <Link
-            href={`/movie/${movie.tmdbId}`}
-            className="absolute inset-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
-            aria-label={`View details for ${movie.title}`}
-          >
-            {movie.posterUrl ? (
-              <Image
-                src={movie.posterUrl}
-                alt=""
-                fill
-                sizes="(max-width: 640px) 50vw, 33vw"
-                className="object-cover"
-              />
-            ) : (
-              <span className="movie-art-label">
-                {isDemo ? "DEMO ARTWORK" : "POSTER UNAVAILABLE"}
-              </span>
-            )}
-          </Link>
-        ) : (
-          <div
-            aria-hidden="true"
-            className={`absolute inset-0 ${movie.posterUrl ? "" : artworkClass
-              }`}
-          >
-            {movie.posterUrl ? (
-              <Image
-                src={movie.posterUrl}
-                alt=""
-                fill
-                sizes="(max-width: 640px) 50vw, 33vw"
-                className="object-cover"
-              />
-            ) : (
-              <>
-                <span className="movie-art-label">DEMO ARTWORK</span>
-                <span className="movie-art-caption">{movie.format}</span>
-              </>
-            )}
-          </div>
-        )}
-        {movie.source === "tmdb" && (
+      <div
+        ref={posterCardRef}
+        onPointerMove={handlePosterMouseMove}
+        onPointerLeave={handlePosterMouseLeave}
+        style={tiltStyle}
+        className="movie-art relative aspect-[2/3] will-change-transform shadow-md transition-shadow duration-300 hover:shadow-[0_12px_32px_rgba(56,189,248,0.18)]"
+      >
+        {/* Holographic Specular Glare Overlay */}
+        <div
+          aria-hidden="true"
+          style={glareStyle}
+          className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-200 mix-blend-overlay"
+        />
+
+        <Link
+          href={movieDetailHref}
+          className="absolute inset-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+          aria-label={`View details for ${movie.title}`}
+        >
+          {movie.posterUrl ? (
+            <Image
+              src={movie.posterUrl}
+              alt=""
+              fill
+              sizes="(max-width: 640px) 50vw, 33vw"
+              className="object-cover"
+            />
+          ) : (
+            <span className="movie-art-label">POSTER UNAVAILABLE</span>
+          )}
+        </Link>
+
+        {movie.tmdbId && (
           <>
             {isPreviewActive && (
               <div className="absolute inset-0 z-10 bg-black/90">
@@ -243,33 +266,20 @@ export default function MovieCard({ movie }) {
           </>
         )}
       </div>
+
       <div className="pt-4">
-        {movie.source === "tmdb" ? (
-          <Link
-            href={`/movie/${movie.tmdbId}`}
-            className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            <p className="mb-2 text-[10px] font-medium tracking-[0.16em] text-accent">
-              {movie.releaseYear || "RELEASE DATE UNAVAILABLE"}
-            </p>
-            <h3 className="text-base font-medium leading-snug sm:text-lg">
-              {movie.title}
-            </h3>
-            <p className="mt-2 text-xs text-muted">{movie.format} · TMDB</p>
-          </Link>
-        ) : (
-          <>
-            <p className="mb-2 text-[10px] font-medium tracking-[0.16em] text-accent">
-              DEMO TITLE
-            </p>
-            <h3 className="text-base font-medium leading-snug sm:text-lg">
-              {movie.title}
-            </h3>
-            <p className="mt-2 text-xs text-muted">
-              {movie.format} · Sample entry
-            </p>
-          </>
-        )}
+        <Link
+          href={movieDetailHref}
+          className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <p className="mb-2 text-[10px] font-medium tracking-[0.16em] text-accent">
+            {movie.releaseYear || "RELEASE DATE UNAVAILABLE"}
+          </p>
+          <h3 className="text-base font-medium leading-snug sm:text-lg">
+            {movie.title}
+          </h3>
+          <p className="mt-2 text-xs text-muted">{movie.format || "Film"} · TMDB</p>
+        </Link>
       </div>
     </article>
   );

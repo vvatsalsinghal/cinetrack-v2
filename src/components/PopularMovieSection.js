@@ -8,6 +8,36 @@ const DEFAULT_API_URL = "http://localhost:4000";
 const TMDB_IMAGE_URL =
   /^https:\/\/image\.tmdb\.org\/t\/p\/w500\/[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)$/i;
 
+const CINEMA_CHANNELS = [
+  {
+    id: "indian",
+    label: "🇮🇳 Indian Cinema",
+    sublabel: "Bollywood, South & Regional",
+    eyebrow: "CURATED FOR INDIA · BOLLYWOOD, SOUTH & REGIONAL",
+    title: "Trending in Indian Cinema.",
+    description: "Bollywood, South cinema, and celebrated regional films produced in India.",
+    queryParams: "industry=indian",
+  },
+  {
+    id: "trending-in",
+    label: "🎟️ Trending in India",
+    sublabel: "Theatrical & OTT charts",
+    eyebrow: "BOX OFFICE & STREAMING · INDIA REGION",
+    title: "Top watched in India right now.",
+    description: "What audiences in theaters and OTT platforms across India are watching today.",
+    queryParams: "region=IN",
+  },
+  {
+    id: "global",
+    label: "🌐 Global Cinema",
+    sublabel: "International hits",
+    eyebrow: "WORLD CINEMA · GLOBAL HITS",
+    title: "Popular around the world.",
+    description: "Leading theatrical and international releases from world cinema.",
+    queryParams: "",
+  },
+];
+
 function getApiUrl() {
   const configuredUrl =
     process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim() || DEFAULT_API_URL;
@@ -68,7 +98,18 @@ function parsePopularMovies(payload) {
 }
 
 export default function PopularMovieSection() {
+  const [selectedChannel, setSelectedChannel] = useState("indian");
   const [result, setResult] = useState({ status: "loading" });
+
+  const activeChannelConfig =
+    CINEMA_CHANNELS.find((c) => c.id === selectedChannel) || CINEMA_CHANNELS[0];
+
+  function handleChannelChange(channelId) {
+    if (channelId !== selectedChannel) {
+      setSelectedChannel(channelId);
+      setResult({ status: "loading" });
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,7 +117,11 @@ export default function PopularMovieSection() {
     async function loadPopularMovies() {
       try {
         const apiUrl = getApiUrl();
-        const response = await fetch(`${apiUrl}/api/movies/popular`, {
+        const queryString = activeChannelConfig.queryParams
+          ? `?${activeChannelConfig.queryParams}`
+          : "";
+
+        const response = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
           headers: { Accept: "application/json" },
           signal: controller.signal,
         });
@@ -88,7 +133,6 @@ export default function PopularMovieSection() {
           if (error instanceof SyntaxError) {
             throw new Error("The Express API returned an unreadable response.");
           }
-
           throw error;
         }
 
@@ -121,7 +165,29 @@ export default function PopularMovieSection() {
 
     loadPopularMovies();
     return () => controller.abort();
-  }, []);
+  }, [activeChannelConfig.queryParams]);
+
+  const channelNav = (
+    <div className="mb-8 flex flex-wrap gap-2.5">
+      {CINEMA_CHANNELS.map((channel) => {
+        const isActive = channel.id === selectedChannel;
+        return (
+          <button
+            key={channel.id}
+            type="button"
+            onClick={() => handleChannelChange(channel.id)}
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium transition-all ${
+              isActive
+                ? "bg-accent font-semibold text-ink shadow-[0_0_16px_rgba(56,189,248,0.35)]"
+                : "border border-line bg-surface/60 text-muted hover:border-accent/50 hover:text-foreground"
+            }`}
+          >
+            <span>{channel.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   if (result.status === "loading") {
     return (
@@ -132,16 +198,17 @@ export default function PopularMovieSection() {
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-20">
           <p className="eyebrow mb-4">
             <span aria-hidden="true" />
-            EXPRESS API · TMDB
+            {activeChannelConfig.eyebrow}
           </p>
           <h2
             id="popular-movies-title"
             className="text-3xl font-medium tracking-tight sm:text-4xl"
           >
-            Popular right now.
+            {activeChannelConfig.title}
           </h2>
-          <p role="status" className="mt-7 text-sm text-muted">
-            Loading popular movies through the CineTrack API…
+          <div className="mt-6">{channelNav}</div>
+          <p role="status" className="mt-4 text-sm text-muted">
+            Loading {activeChannelConfig.title.toLowerCase()}…
           </p>
         </div>
       </section>
@@ -157,17 +224,18 @@ export default function PopularMovieSection() {
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-20">
           <p className="eyebrow mb-4">
             <span aria-hidden="true" />
-            EXPRESS API · TMDB
+            {activeChannelConfig.eyebrow}
           </p>
           <h2
             id="popular-movies-title"
             className="text-3xl font-medium tracking-tight sm:text-4xl"
           >
-            Popular right now.
+            {activeChannelConfig.title}
           </h2>
+          <div className="mt-6">{channelNav}</div>
           <p
             role="alert"
-            className="mt-7 rounded-xl border border-line bg-surface px-5 py-6 text-sm leading-7 text-muted"
+            className="mt-6 rounded-xl border border-line bg-surface px-5 py-6 text-sm leading-7 text-muted"
           >
             {result.message}
           </p>
@@ -175,36 +243,8 @@ export default function PopularMovieSection() {
             href="/discover"
             className="mt-6 inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            Browse all popular movies →
+            Browse all movies →
           </Link>
-        </div>
-      </section>
-    );
-  }
-
-  if (result.status === "empty") {
-    return (
-      <section
-        aria-labelledby="popular-movies-title"
-        className="border-t border-line"
-      >
-        <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-20">
-          <p className="eyebrow mb-4">
-            <span aria-hidden="true" />
-            EXPRESS API · TMDB
-          </p>
-          <h2
-            id="popular-movies-title"
-            className="text-3xl font-medium tracking-tight sm:text-4xl"
-          >
-            Popular right now.
-          </h2>
-          <p
-            role="status"
-            className="mt-7 rounded-xl border border-line bg-surface px-5 py-8 text-sm text-muted"
-          >
-            TMDB has no popular movies to show right now.
-          </p>
         </div>
       </section>
     );
@@ -213,16 +253,17 @@ export default function PopularMovieSection() {
   return (
     <MovieShelf
       id="popular-movies-title"
-      eyebrow="EXPRESS API · TMDB"
-      title="Popular right now."
-      description="Popular films returned by the CineTrack API from TMDB. This list can change over time."
-      movies={result.movies}
+      eyebrow={activeChannelConfig.eyebrow}
+      title={activeChannelConfig.title}
+      description={activeChannelConfig.description}
+      movies={result.movies || []}
     >
+      <div className="mt-6">{channelNav}</div>
       <Link
         href="/discover"
         className="mt-7 inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        Browse all popular movies →
+        Browse full movie catalogue →
       </Link>
     </MovieShelf>
   );

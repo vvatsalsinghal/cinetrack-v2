@@ -896,6 +896,8 @@ export function createApp({
 
   app.get("/api/movies/popular", async (request, response, next) => {
     const pageValue = request.query.page ?? "1";
+    const region = typeof request.query.region === "string" ? request.query.region.trim() : "";
+    const industry = typeof request.query.industry === "string" ? request.query.industry.trim() : "";
 
     if (
       typeof pageValue !== "string" ||
@@ -911,7 +913,7 @@ export function createApp({
     const page = Number(pageValue);
 
     try {
-      response.json(await popularMovies(page));
+      response.json(await popularMovies(page, { region, industry }));
     } catch (error) {
       next(error);
     }

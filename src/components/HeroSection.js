@@ -1,3 +1,5 @@
+import CinemaGlobe from "@/components/CinemaGlobe";
+
 function ArrowIcon() {
   return (
     <svg
@@ -26,7 +28,7 @@ export default function HeroSection() {
       <div className="relative z-10 max-w-2xl">
         <p className="eyebrow mb-7">
           <span aria-hidden="true" />
-          YOUR PERSONAL CINEMA COMPANION
+          YOUR PERSONAL CINEMA COMPANION · INDIA &amp; WORLD CINEMA
         </p>
         <h1 className="hero-title">
           Make movie night
@@ -45,29 +47,12 @@ export default function HeroSection() {
           <ArrowIcon />
         </a>
         <p className="mt-5 text-xs tracking-wide text-muted">
-          A thoughtful home for your next great watch.
+          A thoughtful home for Indian cinema and great stories from around the world.
         </p>
       </div>
 
-      <div
-        aria-hidden="true"
-        className="cinema-art relative mx-auto aspect-square w-full max-w-[490px]"
-      >
-        <div className="art-orbit art-orbit-outer" />
-        <div className="art-orbit art-orbit-inner" />
-        <div className="art-spark art-spark-one" />
-        <div className="art-spark art-spark-two" />
-        <div className="art-card">
-          <div className="art-card-glow" />
-          <div className="art-sun" />
-          <div className="art-horizon" />
-          <div className="art-caption">
-            <span>THE NIGHT IS YOURS</span>
-            <span className="art-caption-line" />
-            <span>01 — 03</span>
-          </div>
-        </div>
-        <div className="art-side-label">ROLL CREDITS ON THE SCROLLING</div>
+      <div className="relative mx-auto flex w-full max-w-[500px] justify-center">
+        <CinemaGlobe />
       </div>
     </section>
   );

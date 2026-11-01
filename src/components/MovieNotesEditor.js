@@ -5,7 +5,7 @@ import { useCineTrack } from "@/components/CineTrackProvider";
 import { MyCinemaStorageError, updateMovieNotes } from "@/lib/myCinema";
 
 export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
-  const { authStatus, updateAccountMovie } = useCineTrack();
+  const { updateAccountMovie } = useCineTrack();
   const [sourceMovie, setSourceMovie] = useState({
     id: movie.id,
     rating: movie.rating ?? "",

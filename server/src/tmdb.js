@@ -167,6 +167,8 @@ export async function searchMovies(
 export async function getPopularMovies(
   page = 1,
   {
+    region = "",
+    industry = "",
     accessToken = process.env.TMDB_READ_ACCESS_TOKEN?.trim(),
     fetchImpl = fetch,
   } = {},
@@ -175,8 +177,15 @@ export async function getPopularMovies(
     throw new TmdbApiError("Choose a TMDB movie page between 1 and 500.", 400);
   }
 
+  let endpoint = `/movie/popular?language=en-US&page=${page}`;
+  if (industry === "indian" || industry === "IN") {
+    endpoint = `/discover/movie?include_adult=false&language=en-US&page=${page}&sort_by=popularity.desc&with_origin_country=IN`;
+  } else if (region) {
+    endpoint = `/movie/popular?language=en-US&page=${page}&region=${encodeURIComponent(region)}`;
+  }
+
   const payload = await getTmdbJson(
-    `/movie/popular?language=en-US&page=${page}`,
+    endpoint,
     "popular movies",
     accessToken,
     fetchImpl,
