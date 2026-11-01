@@ -151,10 +151,20 @@ export default function CinemaChatbot() {
         scrollToBottom();
       }
 
+      const finalContent =
+        streamAccumulatorRef.current.trim() ||
+        "⚠️ Could not retrieve movie recommendations. Please try asking again.";
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessage.id ? { ...m, content: finalContent } : m,
+        ),
+      );
+
       // Persist the full completed message to localStorage
       saveChatHistory([
         ...nextMessages,
-        { ...assistantMessage, content: streamAccumulatorRef.current },
+        { ...assistantMessage, content: finalContent },
       ]);
     } catch {
       const errorMessage = createChatMessage(
@@ -175,13 +185,37 @@ export default function CinemaChatbot() {
     setMessages([DEFAULT_INITIAL_MESSAGE]);
   }
 
-  // Format message text: converts **bold** to highlighted text, markdown bullet points, and live cursor
+  function formatInlineSpans(text) {
+    if (!text) return null;
+    // Split by **bold** or *italic*
+    const tokens = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
+
+    return tokens.map((token, idx) => {
+      if (token.startsWith("**") && token.endsWith("**") && token.length > 4) {
+        return (
+          <strong key={idx} className="font-semibold text-accent">
+            {token.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+        return (
+          <em key={idx} className="italic text-foreground/90">
+            {token.slice(1, -1)}
+          </em>
+        );
+      }
+      return token;
+    });
+  }
+
+  // Format message text: converts **bold**, *italic*, bullets, and live cursor
   function renderFormattedContent(content, isStreamingThisMessage) {
     if (!content && isStreamingThisMessage) {
       return (
         <span className="inline-flex items-center gap-1.5 text-muted text-xs">
           <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-          <span>Writing recommendation…</span>
+          <span>Curating recommendations…</span>
         </span>
       );
     }
@@ -196,39 +230,53 @@ export default function CinemaChatbot() {
           const lines = para.split("\n");
 
           return (
-            <p key={pIdx} className="mb-2.5 last:mb-0 leading-relaxed">
-              {lines.map((line, lIdx) => {
-                const parts = line.split(/(\*\*.*?\*\*)/g);
+            <div key={pIdx} className="mb-2.5 last:mb-0 leading-relaxed">
+              {lines.map((rawLine, lIdx) => {
+                const line = rawLine.trim();
+                if (!line) return null;
+
+                // Headers (### Header)
+                if (line.startsWith("### ")) {
+                  return (
+                    <h4
+                      key={lIdx}
+                      className="font-semibold text-foreground text-[13px] mt-2 mb-1"
+                    >
+                      {formatInlineSpans(line.slice(4))}
+                    </h4>
+                  );
+                }
+
+                // Unordered list items (- or *)
+                if (line.startsWith("- ") || line.startsWith("* ")) {
+                  return (
+                    <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
+                      <span className="text-accent shrink-0 font-bold">•</span>
+                      <span>{formatInlineSpans(line.slice(2))}</span>
+                    </div>
+                  );
+                }
+
+                // Numbered list items (1. 2.)
+                const matchNumber = line.match(/^(\d+)\.\s+(.*)/);
+                if (matchNumber) {
+                  return (
+                    <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
+                      <span className="text-accent shrink-0 font-semibold">
+                        {matchNumber[1]}.
+                      </span>
+                      <span>{formatInlineSpans(matchNumber[2])}</span>
+                    </div>
+                  );
+                }
 
                 return (
-                  <span key={lIdx} className="block">
-                    {parts.map((part, partIdx) => {
-                      if (part.startsWith("**") && part.endsWith("**")) {
-                        const cleanText = part.slice(2, -2);
-                        return (
-                          <strong
-                            key={partIdx}
-                            className="font-semibold text-accent"
-                          >
-                            {cleanText}
-                          </strong>
-                        );
-                      }
-
-                      if (part.startsWith("- ") || part.startsWith("* ")) {
-                        return (
-                          <span key={partIdx} className="inline-block pl-2">
-                            • {part.slice(2)}
-                          </span>
-                        );
-                      }
-
-                      return part;
-                    })}
-                  </span>
+                  <p key={lIdx} className="my-0.5">
+                    {formatInlineSpans(rawLine)}
+                  </p>
                 );
               })}
-            </p>
+            </div>
           );
         })}
 

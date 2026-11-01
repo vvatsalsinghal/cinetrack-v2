@@ -40,17 +40,20 @@ export async function POST(request) {
     const systemPromptText = `You are CineTrack AI, a sophisticated, witty, and deeply knowledgeable cinema concierge embedded in CineTrack.
 
 USER REGION & CINEMA TASTE:
-The user is based in India. Give a rich, authentic Indian cinema touch across recommendations and discussions. Celebrate Hindi (Bollywood), Telugu, Tamil, Malayalam, Kannada, Bengali, and regional cinematic gems alongside world cinema.
-When recommending films or discussing movie nights, prioritize celebrated Indian cinema releases, director filmographies (S.S. Rajamouli, Mani Ratnam, Anurag Kashyap, Lokesh Kanagaraj, Satyajit Ray, Shoojit Sircar, etc.), and note availability on Indian streaming platforms (JioCinema, Netflix India, Prime Video, Disney+ Hotstar, Zee5, SonyLIV) unless the user specifically asks for Hollywood or another international region.
+The user is based in India. Provide rich, authentic Indian and world cinema recommendations. Celebrate Hindi (Bollywood), Telugu, Tamil, Malayalam, Kannada, Bengali, and regional cinematic gems alongside curated world cinema.
+When recommending films or discussing movie nights, prioritize celebrated releases, director masteries (S.S. Rajamouli, Mani Ratnam, Anurag Kashyap, Lokesh Kanagaraj, Satyajit Ray, Shoojit Sircar, etc.), and note availability on Indian streaming platforms (JioCinema, Netflix India, Prime Video, Disney+ Hotstar, Zee5, SonyLIV) unless the user specifically asks for another region.
 
 USER PERSONAL CINEMA MEMORY:
 ${memoryContext}
 
-GUIDELINES:
-1. Help the user discover movies, explore Indian and world cinema, analyze directors, explain endings, or plan movie nights.
-2. Actively use the user's personal library memory! Reference their taste when relevant and avoid recommending films they already marked as finished.
-3. When recommending a movie, format the title in bold like **Movie Title (Year)**.
-4. Keep responses engaging and concise (typically 2 to 4 paragraphs or bullet points).`;
+FORMATTING & RESPONSE GUIDELINES:
+1. Complete all recommendations fully and cleanly. NEVER cut off mid-sentence or leave thoughts unfinished.
+2. For each recommendation, bold the title like **Movie Title (Year)** and provide:
+   - The vibe / why it's special
+   - Key director or standout actors
+   - Where to stream in India (e.g. Netflix, Prime Video, Hotstar, JioCinema)
+3. Keep the format clean, inviting, and concise (typically 2 to 3 well-crafted recommendations per question).
+4. Reference the user's saved library taste when relevant.`;
 
     // Sanitize messages: ensure alternating user/model roles and clean text
     const cleanContents = [];
@@ -103,8 +106,8 @@ GUIDELINES:
         },
         contents: cleanContents,
         generationConfig: {
-          temperature: 0.75,
-          maxOutputTokens: 900,
+          temperature: 0.7,
+          maxOutputTokens: 2500,
         },
       }),
     });
@@ -133,6 +136,25 @@ GUIDELINES:
         const reader = geminiResponse.body.getReader();
         let buffer = "";
 
+        const processJsonChunk = (jsonString) => {
+          try {
+            const json = JSON.parse(jsonString);
+            const candidate = json?.candidates?.[0];
+            const parts = candidate?.content?.parts;
+
+            if (Array.isArray(parts)) {
+              for (const part of parts) {
+                // Stream actual response text, skipping internal thought tokens
+                if (part?.text && !part?.thought) {
+                  controller.enqueue(encoder.encode(part.text));
+                }
+              }
+            }
+          } catch {
+            // Ignore incomplete partial JSON lines until the next chunk completes them
+          }
+        };
+
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -140,26 +162,33 @@ GUIDELINES:
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
+            buffer = lines.pop() ?? "";
 
             for (const line of lines) {
               const trimmed = line.trim();
-              if (trimmed.startsWith("data: ")) {
-                try {
-                  const json = JSON.parse(trimmed.slice(6));
-                  const chunkText =
-                    json?.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (chunkText) {
-                    controller.enqueue(encoder.encode(chunkText));
-                  }
-                } catch {
-                  // Ignore partial line parses
-                }
-              }
+              if (!trimmed.startsWith("data: ")) continue;
+
+              const payload = trimmed.slice(6).trim();
+              if (!payload || payload === "[DONE]") continue;
+
+              processJsonChunk(payload);
+            }
+          }
+
+          // Flush any final buffered line
+          if (buffer.trim().startsWith("data: ")) {
+            const finalPayload = buffer.trim().slice(6).trim();
+            if (finalPayload && finalPayload !== "[DONE]") {
+              processJsonChunk(finalPayload);
             }
           }
         } catch (streamErr) {
           console.error("Stream reading error:", streamErr);
+          controller.enqueue(
+            encoder.encode(
+              "\n\n*(Note: Connection closed by service before complete response)*",
+            ),
+          );
         } finally {
           controller.close();
         }
