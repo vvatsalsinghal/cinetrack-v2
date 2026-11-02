@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
 export default function SiteHeader() {
   const { user, authStatus } = useCineTrack();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const pathname = usePathname();
 
   // Lock body scroll when mobile drawer is open & handle Escape key
   useEffect(() => {
@@ -57,30 +55,19 @@ export default function SiteHeader() {
 
           {/* Desktop Navigation */}
           <nav aria-label="Main navigation" className="hidden items-center gap-6 md:flex">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`text-sm font-medium transition-colors ${
-                    isActive
-                      ? "text-accent font-semibold"
-                      : "text-foreground/80 hover:text-accent"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
+            {navLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-sm font-medium text-foreground/85 transition-colors hover:text-accent"
+              >
+                {link.label}
+              </Link>
+            ))}
 
             <Link
               href="/account"
-              className={`flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-semibold transition-all ${
-                pathname === "/account"
-                  ? "border-accent bg-accent/15 text-accent shadow-sm"
-                  : "border-line bg-surface/80 text-foreground hover:border-accent/60 hover:text-accent"
-              }`}
+              className="flex items-center gap-2 rounded-full border border-line bg-surface/80 px-4 py-1.5 text-xs font-semibold text-foreground transition-all hover:border-accent hover:text-accent"
             >
               {isAuthenticated && (
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -186,11 +173,7 @@ export default function SiteHeader() {
                 <Link
                   href="/"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                    pathname === "/"
-                      ? "bg-accent/15 text-accent font-semibold"
-                      : "text-foreground/90 hover:bg-surface-elevated hover:text-accent"
-                  }`}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-surface-elevated hover:text-accent"
                 >
                   <span>🏠 Home</span>
                 </Link>
@@ -198,11 +181,7 @@ export default function SiteHeader() {
                 <Link
                   href="/discover"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                    pathname === "/discover"
-                      ? "bg-accent/15 text-accent font-semibold"
-                      : "text-foreground/90 hover:bg-surface-elevated hover:text-accent"
-                  }`}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-surface-elevated hover:text-accent"
                 >
                   <span>🎬 Discover</span>
                   <span className="rounded bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
@@ -213,11 +192,7 @@ export default function SiteHeader() {
                 <Link
                   href="/news"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                    pathname === "/news"
-                      ? "bg-accent/15 text-accent font-semibold"
-                      : "text-foreground/90 hover:bg-surface-elevated hover:text-accent"
-                  }`}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-surface-elevated hover:text-accent"
                 >
                   <span>⚡ Cinema Pulse</span>
                   <span className="rounded bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
@@ -228,11 +203,7 @@ export default function SiteHeader() {
                 <Link
                   href="/my-cinema"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                    pathname === "/my-cinema"
-                      ? "bg-accent/15 text-accent font-semibold"
-                      : "text-foreground/90 hover:bg-surface-elevated hover:text-accent"
-                  }`}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-surface-elevated hover:text-accent"
                 >
                   <span>🍿 My Cinema</span>
                   <span className="rounded bg-accent/10 px-2 py-0.5 text-[10px] text-accent">
@@ -243,11 +214,7 @@ export default function SiteHeader() {
                 <Link
                   href="/account"
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-colors ${
-                    pathname === "/account"
-                      ? "bg-accent/15 text-accent font-semibold"
-                      : "text-foreground/90 hover:bg-surface-elevated hover:text-accent"
-                  }`}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-foreground/90 transition-colors hover:bg-surface-elevated hover:text-accent"
                 >
                   <span>👤 {isAuthenticated ? "Account & Friends" : "Sign In / Register"}</span>
                   {isAuthenticated && (
