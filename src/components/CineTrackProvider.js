@@ -11,9 +11,29 @@ import {
 } from "react";
 import { clearSavedMovies, readSavedMovies } from "@/lib/myCinema";
 
+/**
+ * ==============================================================================
+ * CINETRACK GLOBAL PROVIDER & AUTHENTICATION CONTEXT
+ * ==============================================================================
+ * What this file does:
+ * 1. Global State Hub: Holds the currently logged-in user, their movie library,
+ *    and personalized recommendations so any component in the app can access them.
+ * 2. Express Backend Communication: Sends secure requests with `credentials: "include"`
+ *    to attach HttpOnly JWT authentication cookies automatically.
+ * 3. Offline-to-Cloud Auto-Sync: When an anonymous user signs in, any movies
+ *    they saved in their browser's localStorage are automatically sent to MongoDB.
+ * 4. Race Condition Protection: Uses an `authVersion` counter to prevent old
+ *    in-flight responses from overwriting fresh state if a user logs in/out quickly.
+ * ==============================================================================
+ */
+
+// Fallback to local Express port if NEXT_PUBLIC_CINETRACK_API_URL is unset
 const DEFAULT_API_URL = "http://localhost:4000";
+
+// Create the React Context object
 const CineTrackContext = createContext(null);
 
+// Custom Error to capture API failure messages and HTTP status codes
 class CineTrackApiError extends Error {
   constructor(message, status) {
     super(message);
@@ -23,7 +43,9 @@ class CineTrackApiError extends Error {
 }
 
 /**
- * Returns the base backend API URL from env or falls back to localhost.
+ * Helper to determine the Express API base URL.
+ * In development: http://localhost:4000
+ * In production: https://cinetrack-api-production.up.railway.app
  */
 function getApiUrl() {
   const value = process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim() || DEFAULT_API_URL;
@@ -36,7 +58,11 @@ function getApiUrl() {
 }
 
 /**
- * Generic API request helper with error handling and credentials.
+ * Universal fetch wrapper for communicating with the Express backend.
+ * Key Concepts:
+ * - `credentials: "include"`: Crucial! Instructs the browser to send the HttpOnly JWT cookie.
+ * - Parses JSON responses and handles empty 204 (No Content) responses safely.
+ * - Extracts human-readable error messages sent by the Express server.
  */
 async function apiRequest(path, options = {}) {
   const url = `${getApiUrl()}${path}`;
@@ -50,7 +76,7 @@ async function apiRequest(path, options = {}) {
   try {
     response = await fetch(url, {
       ...options,
-      credentials: "include",
+      credentials: "include", // Automatically attaches JWT session cookies
       headers,
     });
   } catch {
@@ -59,6 +85,7 @@ async function apiRequest(path, options = {}) {
     );
   }
 
+  // Handle responses with no body (e.g., HTTP 204 No Content on DELETE)
   let payload = null;
   if (response.status !== 204) {
     try {
@@ -68,6 +95,7 @@ async function apiRequest(path, options = {}) {
     }
   }
 
+  // Throw detailed error if response is not 2xx
   if (!response.ok) {
     const message =
       typeof payload?.error === "string"
@@ -80,38 +108,48 @@ async function apiRequest(path, options = {}) {
 }
 
 export function CineTrackProvider({ children }) {
-  // authVersion avoids race conditions when switching accounts
+  /**
+   * Concurrency Guard (authVersion):
+   * If a user logs in and immediately logs out, two asynchronous requests are flying.
+   * If the first request completes AFTER the logout, it could accidentally log the user
+   * back in. `authVersion` increments on every action to ensure outdated responses are discarded.
+   */
   const authVersion = useRef(0);
 
-  // Authentication state
+  // Authentication State
+  // authStatus can be: "checking" (initial probe), "authenticated", "anonymous", or "error"
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState("checking");
 
-  // User's movie collection state
+  // User's Cloud Movie Collection State (stored in MongoDB)
   const [accountMovies, setAccountMovies] = useState([]);
   const [cinemaStatus, setCinemaStatus] = useState("loading");
   const [cinemaError, setCinemaError] = useState("");
 
-  // Recommendations state
+  // Recommendations State (calculated by backend based on library taste signals)
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationGenres, setRecommendationGenres] = useState([]);
   const [recommendationActivityCount, setRecommendationActivityCount] = useState(0);
   const [recommendationStatus, setRecommendationStatus] = useState("idle");
   const [recommendationError, setRecommendationError] = useState("");
 
-  // Fetches user's saved movies and auto-syncs any local offline records
+  /**
+   * Fetches the user's movie collection from MongoDB and auto-migrates
+   * any movies that were saved in the browser before signing in.
+   */
   const loadAccountCollection = useCallback(async () => {
     const expectedVersion = authVersion.current;
     setCinemaStatus("loading");
     setCinemaError("");
 
     try {
+      // 1. Fetch remote movies from MongoDB
       const payload = await apiRequest("/api/me/cinema");
       if (expectedVersion !== authVersion.current) return;
 
       const remoteMovies = Array.isArray(payload?.movies) ? payload.movies : [];
 
-      // Check for offline movies to migrate into user account
+      // 2. Check if the user has movies in browser localStorage to import
       let localMovies = [];
       try {
         localMovies = readSavedMovies();
@@ -126,14 +164,14 @@ export function CineTrackProvider({ children }) {
         return;
       }
 
-      // If no local movies to import, we're done
+      // 3. If no local offline movies exist, we are done
       if (localMovies.length === 0) {
         setAccountMovies(remoteMovies);
         setCinemaStatus("ready");
         return;
       }
 
-      // Import local movies into user's account
+      // 4. Auto-import offline movies into MongoDB account
       const importPayload = await apiRequest("/api/me/cinema/import", {
         method: "POST",
         body: JSON.stringify({ movies: localMovies }),
@@ -141,6 +179,7 @@ export function CineTrackProvider({ children }) {
 
       if (expectedVersion !== authVersion.current) return;
 
+      // 5. Clear localStorage since records now live safely in the cloud database
       clearSavedMovies();
       const importedMovies = Array.isArray(importPayload?.movies)
         ? importPayload.movies
@@ -160,7 +199,9 @@ export function CineTrackProvider({ children }) {
     }
   }, []);
 
-  // Fetches personalized recommendations based on library activity
+  /**
+   * Fetches AI/algorithm recommendations based on user's highest rated genres.
+   */
   const loadRecommendations = useCallback(async () => {
     const expectedVersion = authVersion.current;
     setRecommendationStatus("loading");
@@ -190,7 +231,10 @@ export function CineTrackProvider({ children }) {
     }
   }, []);
 
-  // Sets active user and triggers library & recommendations fetch
+  /**
+   * Called upon successful login or registration to activate user state
+   * and kick off loading their library and recommendations.
+   */
   const activateAccount = useCallback(
     async (nextUser, expectedVersion) => {
       if (!nextUser || typeof nextUser !== "object") return;
@@ -204,7 +248,10 @@ export function CineTrackProvider({ children }) {
     [loadAccountCollection, loadRecommendations],
   );
 
-  // Check existing session on initial mount
+  /**
+   * Initial App Load Check:
+   * When user opens the site, check with Express (/api/auth/me) if their JWT cookie is still valid.
+   */
   useEffect(() => {
     let cancelled = false;
     const expectedVersion = authVersion.current;
@@ -218,6 +265,7 @@ export function CineTrackProvider({ children }) {
       } catch (error) {
         if (cancelled || expectedVersion !== authVersion.current) return;
 
+        // HTTP 401 Unauthorized simply means the user is not logged in (anonymous)
         if (error instanceof CineTrackApiError && error.status === 401) {
           setUser(null);
           setAuthStatus("anonymous");
@@ -225,6 +273,7 @@ export function CineTrackProvider({ children }) {
           return;
         }
 
+        // Backend server offline or network failure
         setAuthStatus("error");
         setCinemaStatus("ready");
         setCinemaError(
@@ -241,7 +290,8 @@ export function CineTrackProvider({ children }) {
     };
   }, [activateAccount]);
 
-  // Auth actions
+  // --- AUTHENTICATION ACTIONS ---
+
   const register = useCallback(
     async ({ email, password }) => {
       const payload = await apiRequest("/api/auth/register", {
@@ -269,6 +319,7 @@ export function CineTrackProvider({ children }) {
   const logout = useCallback(async () => {
     await apiRequest("/api/auth/logout", { method: "POST" });
     authVersion.current += 1;
+    // Reset all user data in state upon logout
     setUser(null);
     setAccountMovies([]);
     setAuthStatus("anonymous");
@@ -292,7 +343,8 @@ export function CineTrackProvider({ children }) {
     return payload?.user;
   }, []);
 
-  // Library actions
+  // --- CLOUD MOVIE LIBRARY ACTIONS ---
+
   const saveAccountMovie = useCallback(
     async (movie) => {
       const expectedVersion = authVersion.current;
@@ -302,10 +354,12 @@ export function CineTrackProvider({ children }) {
       });
 
       if (payload?.movie && expectedVersion === authVersion.current) {
+        // Optimistically update React state with the newly saved movie
         setAccountMovies((current) => [
           payload.movie,
           ...current.filter((item) => item.id !== payload.movie.id),
         ]);
+        // Refresh taste recommendations to reflect new library entry
         loadRecommendations();
       }
     },
@@ -343,7 +397,8 @@ export function CineTrackProvider({ children }) {
     [loadRecommendations],
   );
 
-  // Social / Friends actions
+  // --- SOCIAL / FRIENDS & WATCH MATCH ACTIONS ---
+
   const getFriends = useCallback(async () => {
     return await apiRequest("/api/friends");
   }, []);
@@ -371,6 +426,7 @@ export function CineTrackProvider({ children }) {
     return await apiRequest(`/api/me/match/${encodeURIComponent(friendHandle)}`);
   }, []);
 
+  // Memoize the context value object so consumers don't re-render unless values change
   const value = useMemo(
     () => ({
       user,
@@ -433,6 +489,11 @@ export function CineTrackProvider({ children }) {
   );
 }
 
+/**
+ * Custom hook for React components to access CineTrack context anywhere.
+ * Example usage in any component:
+ * const { user, saveAccountMovie } = useCineTrack();
+ */
 export function useCineTrack() {
   const context = useContext(CineTrackContext);
   if (!context) {

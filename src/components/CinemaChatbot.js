@@ -197,10 +197,15 @@ export default function CinemaChatbot() {
         return;
       }
 
-      // 3. Set up real-time stream reader
+      // 3. Set up real-time stream reader (ReadableStream & Server-Sent Events)
+      // Concept: Instead of waiting 10 seconds for the entire AI answer,
+      // the server sends chunks of text as Gemini generates them.
       const reader = response.body?.getReader();
       if (!reader) throw new Error("Stream reader unavailable");
 
+      // TextDecoder decodes raw binary byte Uint8Arrays into readable text.
+      // { stream: true } ensures multibyte characters (like emojis 🍿 or Hindi characters)
+      // are not broken if a chunk splits between bytes.
       const decoder = new TextDecoder();
       const assistantMessage = createChatMessage("assistant", "");
       let accumulatedText = "";
@@ -210,14 +215,16 @@ export default function CinemaChatbot() {
       setMessages((prev) => [...prev, assistantMessage]);
       scrollToBottom();
 
-      // Read chunks as they arrive from Gemini
+      // Read incoming binary chunks in a loop until done === true
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        // Decode the binary chunk and append to accumulated response
         accumulatedText += decoder.decode(value, { stream: true });
         const currentText = accumulatedText;
 
+        // Update the assistant message in React state in real-time
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessage.id ? { ...m, content: currentText } : m,

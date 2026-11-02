@@ -206,16 +206,38 @@ const CONTINENT_POINTS = [
 ];
 
 /**
- * Projects a spherical coordinate (latitude, longitude) onto a 2D canvas plane.
+ * ==============================================================================
+ * 3D SPHERICAL PROJECTION MATH (project3D)
+ * ==============================================================================
+ * Concept:
+ * Converts Earth's coordinates (latitude and longitude) into 2D screen coordinates (x, y).
+ *
+ * How it works:
+ * 1. Convert Lat/Lon degrees to spherical radians (phi and theta).
+ * 2. Calculate 3D sphere coordinates:
+ *      x0 = cos(lat) * sin(lon)
+ *      y0 = sin(lat)
+ *      z0 = cos(lat) * cos(lon)
+ * 3. Rotate coordinates in 3D space using Euler angles:
+ *      Pitch (rotX) tilts the globe up/down.
+ *      Yaw (rotY) spins the globe left/right.
+ * 4. Project onto 2D canvas:
+ *      x = cx + x1 * R (screen horizontal position)
+ *      y = cy - y1 * R (screen vertical position, inverted because canvas Y goes down)
+ *      visible = z1 > 0 (only points on the front hemisphere facing the user are visible)
+ * ==============================================================================
  */
 function project3D(lat, lon, R, rotX, rotY, cx, cy) {
+  // Convert latitude and longitude from degrees to radians
   const phi = (lat * Math.PI) / 180;
   const theta = ((lon + rotY) * Math.PI) / 180;
 
+  // Spherical to 3D Cartesian coordinates
   const x0 = Math.cos(phi) * Math.sin(theta);
   const y0 = Math.sin(phi);
   const z0 = Math.cos(phi) * Math.cos(theta);
 
+  // Apply pitch (X-axis rotation)
   const radX = (rotX * Math.PI) / 180;
   const y1 = y0 * Math.cos(radX) - z0 * Math.sin(radX);
   const z1 = y0 * Math.sin(radX) + z0 * Math.cos(radX);
@@ -225,7 +247,7 @@ function project3D(lat, lon, R, rotX, rotY, cx, cy) {
     x: cx + x1 * R,
     y: cy - y1 * R,
     z: z1,
-    visible: z1 > 0,
+    visible: z1 > 0, // Points with z1 <= 0 are on the back side of the Earth
   };
 }
 
@@ -318,7 +340,20 @@ export default function CinemaGlobe() {
     setIsInteracting(false);
   }
 
-  // Canvas animation & render loop (runs continuously at 60fps)
+  /**
+   * ==============================================================================
+   * 60FPS CANVAS RENDER LOOP (requestAnimationFrame)
+   * ==============================================================================
+   * Concept:
+   * 1. Linear Interpolation (LERP):
+   *    Instead of snapping instantly to new angles, the current angle smoothly glides
+   *    toward the target angle: current += (target - current) * 0.08.
+   *    This creates a heavy, physical momentum feeling when dragging.
+   * 2. High-DPI Scaling (Retina displays):
+   *    Multiplying canvas resolution by window.devicePixelRatio ensures the globe
+   *    looks razor-sharp on mobile phones, 4K monitors, and MacBooks.
+   * ==============================================================================
+   */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -330,17 +365,19 @@ export default function CinemaGlobe() {
     let pulsePhase = 0;
 
     function render() {
-      // Smooth interpolation (lerp) toward target rotations
+      // 1. Smooth interpolation (lerp) toward target rotations
       rotYRef.current += (targetRotYRef.current - rotYRef.current) * 0.08;
       rotXRef.current += (targetRotXRef.current - rotXRef.current) * 0.08;
 
-      // Gentle ambient rotation when user isn't interacting
+      // 2. Continuous ambient auto-spin when user is idle
       if (!isPointerDownRef.current && !isHoveredRef.current) {
         targetRotYRef.current += 0.20;
       }
 
+      // Harmonic pulse timer for animated rings
       pulsePhase = (pulsePhase + 0.04) % (Math.PI * 2);
 
+      // 3. Retina display sharpness scaling
       const dpr = window.devicePixelRatio || 1;
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;

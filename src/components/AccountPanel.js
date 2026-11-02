@@ -1,12 +1,41 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * ACCOUNT PANEL & SOCIAL HUB (CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Powers user authentication (Sign In & Sign Up), profile management (handle,
+ * public collection link, privacy settings), and CineTrack's social features:
+ * - Connecting with other cinephiles (friends)
+ * - "Movie Night Watch Match" (calculates movie watchlist overlap between friends)
+ * 
+ * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
+ * 1. JWT Cookie-Based Authentication Flow:
+ *    When a user signs in or registers, the Express backend responds with an
+ *    `httpOnly` cookie (`cinetrack_token`). Next.js and the browser automatically
+ *    include this cookie with every subsequent request without exposing the token to JavaScript.
+ * 
+ * 2. Asynchronous State Machines (isSubmitting, error):
+ *    All network actions disable buttons to prevent double-clicks, display clear loading
+ *    text, and catch backend errors to display friendly feedback in the UI.
+ * 
+ * 3. Modal Dialog Accessibility:
+ *    When the "Movie Night Watch Match" modal opens, keyboard listeners bind the `Escape` key,
+ *    and focus is automatically moved into the modal with `aria-modal="true"`.
+ * ==============================================================================
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
+// Common styling classes for input fields
 const inputClass =
   "min-h-11 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 export default function AccountPanel() {
+  // Grab user state and authentication actions from CineTrack context
   const {
     user,
     authStatus,
@@ -17,7 +46,8 @@ export default function AccountPanel() {
     updateProfile,
   } = useCineTrack();
 
-  const [mode, setMode] = useState("register");
+  // Local form state
+  const [mode, setMode] = useState("register"); // 'register' or 'login'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,15 +55,19 @@ export default function AccountPanel() {
 
   const isRegister = mode === "register";
 
+  /**
+   * Handles Form Submit:
+   * Prevents full browser reload, triggers register or login, and clears password on success.
+   */
   async function handleSubmit(event) {
-    event.preventDefault();
+    event.preventDefault(); // Stop standard HTTP POST reload
     setError("");
     setIsSubmitting(true);
 
     try {
       const authAction = isRegister ? register : login;
       await authAction({ email, password });
-      setPassword("");
+      setPassword(""); // Clear sensitive password from memory on success
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -45,6 +79,10 @@ export default function AccountPanel() {
     }
   }
 
+  /**
+   * Handles Sign Out:
+   * Clears the server-side JWT cookie and resets local state to anonymous.
+   */
   async function handleLogout() {
     setError("");
     setIsSubmitting(true);

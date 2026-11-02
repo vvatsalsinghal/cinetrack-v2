@@ -1,5 +1,30 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * MY CINEMA COLLECTION (CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Displays the user's personal movie library (saved, watching, finished).
+ * 
+ * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
+ * 1. Hybrid Offline/Cloud Storage Bridge:
+ *    - When the user is NOT signed in: Reads movies directly from browser `localStorage`
+ *      using React 18+'s `useSyncExternalStore` hook for multi-tab synchronization.
+ *    - When the user IS signed in: Reads movies from MongoDB via `CineTrackProvider`
+ *      context (`accountMovies`).
+ * 
+ * 2. Status Categorization & Filtering:
+ *    Allows sorting movies into "Saved for later", "Watching", and "Finished" states,
+ *    updating either MongoDB or local storage depending on auth status.
+ * 
+ * 3. Double-Click & Race Protection (`pendingMovieId`):
+ *    While an item is being deleted or updated, its interactive buttons are disabled
+ *    to prevent duplicate network mutations.
+ * ==============================================================================
+ */
+
 import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import MovieCard from "@/components/MovieCard";
@@ -13,6 +38,7 @@ import {
   updateMovieStatus,
 } from "@/lib/myCinema";
 
+// User-friendly display names for movie watch statuses
 const STATUS_LABELS = {
   saved: "Saved for later",
   watching: "Watching",
@@ -20,6 +46,7 @@ const STATUS_LABELS = {
 };
 
 export default function MyCinemaCollection() {
+  // Grab cloud collection and mutation functions from CineTrack context
   const {
     authStatus,
     accountMovies = [],
@@ -30,21 +57,32 @@ export default function MyCinemaCollection() {
     removeAccountMovie,
   } = useCineTrack() || {};
 
-  // Subscribe to browser localStorage when signed out
+  /**
+   * useSyncExternalStore (React 18+):
+   * Safely subscribes to browser localStorage outside of React's render tree.
+   * - subscribeToMyCinema: listens for 'storage' events across browser tabs
+   * - getMyCinemaSnapshot: reads the latest parsed items in the browser
+   * - getMyCinemaServerSnapshot: returns safe empty fallback during SSR/prerender
+   */
   const snapshot = useSyncExternalStore(
     subscribeToMyCinema,
     getMyCinemaSnapshot,
     getMyCinemaServerSnapshot,
   );
 
+  // Local component UI state
   const [actionError, setActionError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pendingMovieId, setPendingMovieId] = useState(null);
 
+  // Determine active data source: cloud account or local browser storage
   const isSignedIn = authStatus === "authenticated";
   const movies = isSignedIn ? accountMovies : snapshot.movies;
 
-  // Removes a movie from either account collection or local browser storage
+  /**
+   * Removes a movie:
+   * Branches depending on whether user is logged in (API) or logged out (localStorage).
+   */
   async function handleRemove(movieId) {
     setPendingMovieId(movieId);
     try {
@@ -61,7 +99,9 @@ export default function MyCinemaCollection() {
     }
   }
 
-  // Updates status (saved, watching, finished) in account or local storage
+  /**
+   * Updates a movie's watch status ('saved' | 'watching' | 'finished').
+   */
   async function handleStatusChange(movieId, status) {
     setPendingMovieId(movieId);
     try {

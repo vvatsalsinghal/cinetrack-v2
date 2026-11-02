@@ -1,12 +1,44 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * POPULAR MOVIE SECTION (CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Displays interactive shelves of trending movies on the homepage with 3 selectable
+ * tabs: "Indian Cinema", "Trending in India", and "Global Cinema".
+ * 
+ * KEY CONCEPTS DEMONSTRATED HERE:
+ * 1. Resilient Fetch Architecture:
+ *    First attempts to query CineTrack's internal Next.js API route (`/api/movies/popular`).
+ *    If that fails or times out, it gracefully falls back to the Express/Railway backend.
+ * 
+ * 2. Race-Condition Prevention (AbortController):
+ *    When a user rapidly clicks between tabs (e.g. from Indian to Global then back),
+ *    the previous network request is cleanly aborted so old responses never overwrite
+ *    the latest tab data.
+ * 
+ * 3. Asynchronous UI State Machine:
+ *    Manages distinct UI states: loading, error, empty, and success, ensuring the user
+ *    always sees helpful feedback.
+ * ==============================================================================
+ */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import MovieShelf from "@/components/MovieShelf";
 
+// Default local Express server URL (used as fallback when running locally)
 const DEFAULT_API_URL = "http://localhost:4000";
 
-// Three tabs for exploring cinema
+/**
+ * Tab definitions for the homepage movie shelves.
+ * Notice the queryParams property:
+ * - "industry=indian": instructs our API to filter by Indian production countries (IN)
+ * - "region=IN": filters box office & streaming charts popular in India
+ * - "": default global popular movies
+ */
 const CINEMA_CHANNELS = [
   {
     id: "indian",
@@ -37,7 +69,10 @@ const CINEMA_CHANNELS = [
   },
 ];
 
-// Resolves the backend URL (Express on Railway / localhost)
+/**
+ * Resolves the backend Express API URL from environment variables.
+ * In production on Vercel, NEXT_PUBLIC_CINETRACK_API_URL points to Railway.
+ */
 function getApiUrl() {
   const configured = process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim();
   if (!configured) return DEFAULT_API_URL;
@@ -48,7 +83,11 @@ function getApiUrl() {
   }
 }
 
-// Converts raw movie results from the API into clean, consistent card objects
+/**
+ * Data Normalizer:
+ * Takes raw movie arrays from either Next.js or Express and standardizes them
+ * into a predictable object shape expected by <MovieCard />.
+ */
 function formatMovies(results) {
   if (!Array.isArray(results)) return [];
 
@@ -65,23 +104,28 @@ function formatMovies(results) {
     }));
 }
 
-// Fetches popular movies from the local Next.js route, falling back to Express if needed
+/**
+ * Resilient multi-tier data fetcher:
+ * 1. Primary: Next.js internal edge proxy (`/api/movies/popular${queryString}`)
+ * 2. Secondary Fallback: Direct Express backend on Railway
+ */
 async function fetchPopularMovies(queryString, signal) {
-  // 1. Attempt Next.js native API route (/api/movies/popular)
+  // Step 1: Query internal Next.js API route first (fast, cached via Next.js ISR)
   try {
     const res = await fetch(`/api/movies/popular${queryString}`, {
       headers: { Accept: "application/json" },
-      signal,
+      signal, // Passed from AbortController so fast tab switching can cancel it
     });
     if (res.ok) {
       const data = await res.json();
       return formatMovies(data.results);
     }
   } catch (error) {
+    // If the user switched tabs, fetch throws an "AbortError" — rethrow it immediately
     if (error.name === "AbortError") throw error;
   }
 
-  // 2. Fallback to Express backend if the internal route is unavailable
+  // Step 2: Fall back to Express API (e.g. Railway or localhost:4000)
   const apiUrl = getApiUrl();
   const fallbackRes = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
     headers: { Accept: "application/json" },
@@ -97,12 +141,17 @@ async function fetchPopularMovies(queryString, signal) {
 }
 
 export default function PopularMovieSection() {
+  // State 1: Which channel tab is active ("indian", "trending-in", or "global")
   const [selectedChannel, setSelectedChannel] = useState("indian");
+
+  // State 2: Async UI state object { status: "loading" | "success" | "error" | "empty", movies?, message? }
   const [result, setResult] = useState({ status: "loading" });
 
+  // Look up the configuration object for whichever tab is currently selected
   const activeChannelConfig =
     CINEMA_CHANNELS.find((c) => c.id === selectedChannel) || CINEMA_CHANNELS[0];
 
+  // User tab click handler: only triggers a fetch if clicking a different tab
   function handleChannelChange(channelId) {
     if (channelId !== selectedChannel) {
       setSelectedChannel(channelId);
@@ -110,6 +159,12 @@ export default function PopularMovieSection() {
     }
   }
 
+  /**
+   * Data Fetching Effect:
+   * Runs whenever activeChannelConfig.queryParams changes (i.e. user clicks a tab).
+   * Notice the cleanup function `return () => controller.abort()`:
+   * This cancels the pending HTTP request if the tab changes before the server responds.
+   */
   useEffect(() => {
     const controller = new AbortController();
     const queryString = activeChannelConfig.queryParams
@@ -118,6 +173,7 @@ export default function PopularMovieSection() {
 
     fetchPopularMovies(queryString, controller.signal)
       .then((movies) => {
+        // Prevent state updates if component unmounted or another tab was clicked
         if (!controller.signal.aborted) {
           setResult({
             status: movies.length > 0 ? "success" : "empty",
@@ -126,6 +182,7 @@ export default function PopularMovieSection() {
         }
       })
       .catch((error) => {
+        // If aborted, do nothing; otherwise display user-friendly error
         if (!controller.signal.aborted) {
           setResult({
             status: "error",
@@ -134,6 +191,7 @@ export default function PopularMovieSection() {
         }
       });
 
+    // Cleanup function: aborts this fetch if the user clicks another tab
     return () => controller.abort();
   }, [activeChannelConfig.queryParams]);
 

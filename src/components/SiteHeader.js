@@ -1,14 +1,52 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * SITE HEADER & NAVIGATION (CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Provides the global sticky top navigation bar across all CineTrack pages.
+ * - On desktop: Displays direct links (Discover, Cinema Pulse, My Cinema) + Account pill.
+ * - On mobile: Displays a 3-line hamburger menu that opens a frosted slide-out drawer.
+ * 
+ * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
+ * 1. Global Persistence in RootLayout:
+ *    Mounted directly in `src/app/layout.js` inside `<CineTrackProvider>`.
+ *    Because it sits directly under `<body>` (outside of `<main overflow-hidden>`),
+ *    `position: sticky` works smoothly across all pages during scroll.
+ * 
+ * 2. Mobile Drawer & Body Scroll Locking:
+ *    When `mobileMenuOpen` is true, the `useEffect` sets `document.body.style.overflow = "hidden"`
+ *    to prevent the underlying page from scrolling while the menu is open.
+ *    The effect's cleanup function restores `overflow = ""` when closed or unmounted.
+ * 
+ * 3. Keyboard & Screen Reader Accessibility:
+ *    - Listens for the `Escape` key to close the mobile menu immediately.
+ *    - Uses `aria-label`, `aria-expanded`, and semantic `<nav>`, `<header>` elements.
+ * 
+ * 4. Next.js 16 Static Prerendering Compliance:
+ *    Avoids calling runtime `usePathname()` directly outside of a `<Suspense>` boundary,
+ *    guaranteeing that Next.js 16 static site generation (SSG) compiles without errors.
+ * ==============================================================================
+ */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
 export default function SiteHeader() {
+  // Read authenticated user info and login status from CineTrack context
   const { user, authStatus } = useCineTrack();
+
+  // Mobile drawer open/close toggle state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Lock body scroll when mobile drawer is open & handle Escape key
+  /**
+   * Body Scroll Lock & Accessibility Effect:
+   * Prevents background page scrolling while the drawer is open.
+   * Also binds an 'Escape' key listener for desktop/keyboard accessibility.
+   */
   useEffect(() => {
     if (!mobileMenuOpen) return;
 
@@ -16,15 +54,18 @@ export default function SiteHeader() {
       if (e.key === "Escape") setMobileMenuOpen(false);
     }
 
+    // Freeze background scrolling
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
 
+    // Cleanup: restore scroll and remove event listener
     return () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [mobileMenuOpen]);
 
+  // Primary site navigation destinations
   const navLinks = [
     { href: "/discover", label: "Discover" },
     { href: "/news", label: "Cinema Pulse" },

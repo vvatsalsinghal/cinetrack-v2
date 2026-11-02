@@ -1,3 +1,25 @@
+/**
+ * ==============================================================================
+ * CINETRACK AI STREAMING ROUTE HANDLER (/api/chat)
+ * ==============================================================================
+ * Key Concepts to Learn:
+ * 1. Next.js Route Handler:
+ *    Exporting `export async function POST(request)` creates a secure serverless
+ *    endpoint in the Next.js backend.
+ *
+ * 2. API Key Security:
+ *    `process.env.GEMINI_API_KEY` is read strictly on the server.
+ *    The client browser never sees the Google Gemini API key.
+ *
+ * 3. Retrieval-Augmented Context (RAG Concept):
+ *    We inject the user's active movie library into the Gemini system prompt.
+ *    This allows the AI to know their taste, favorite genres, and already-watched movies.
+ *
+ * 4. Streaming via ReadableStream:
+ *    Instead of waiting for Gemini to generate 500 words and returning a slow JSON,
+ *    we stream tokens character-by-character back to the browser using `ReadableStream`.
+ * ==============================================================================
+ */
 export async function POST(request) {
   try {
     const body = await request.json();

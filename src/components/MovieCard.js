@@ -4,26 +4,46 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+/**
+ * ==============================================================================
+ * MOVIE CARD COMPONENT (INTERACTIVE 3D TILT & TRAILER PREVIEW)
+ * ==============================================================================
+ * Features:
+ * 1. 3D Holographic Tilt: Calculates cursor position relative to the poster card
+ *    to rotate the card in 3D space with an optical glare reflection.
+ * 2. On-Demand Preview: Instead of loading trailers for 20+ movies at once
+ *    (which would slow down the page), the trailer and score are fetched
+ *    only when the user hovers over or clicks "Preview".
+ * 3. Accessibility: Supports keyboard navigation (Tab to focus, Escape to close).
+ * ==============================================================================
+ */
 export default function MovieCard({ movie }) {
+  // Normalize movie ID whether it comes from TMDB or local library
   const movieId = movie.tmdbId || movie.id;
   const movieDetailHref = movie.tmdbId ? `/movie/${movie.tmdbId}` : `/movie/${movieId}`;
 
-  // Preview overlay state
+  // State for lazy trailer & ratings preview overlay
   const [preview, setPreview] = useState(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
 
-  // 3D holographic tilt on poster hover
+  // Ref to measure poster dimensions on screen for 3D physics
   const posterCardRef = useRef(null);
+
+  // Dynamic CSS transforms applied to the poster card
   const [tiltStyle, setTiltStyle] = useState({
     transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
   });
   const [glareStyle, setGlareStyle] = useState({ opacity: 0 });
 
-  // Loads video trailer and score for the preview card
+  /**
+   * Fetches lightweight preview details (rating, trailer key, genre) from Next.js API route.
+   * Only called once per movie to conserve network bandwidth.
+   */
   async function loadPreview() {
+    // If preview is already loaded or already in-flight, skip
     if (preview || isLoadingPreview || !movie.tmdbId) return;
 
     setIsLoadingPreview(true);
@@ -41,8 +61,10 @@ export default function MovieCard({ movie }) {
     }
   }
 
-  // Mouse hover handlers
+  // --- MOUSE HOVER HANDLERS ---
+
   function handlePointerEnter(event) {
+    // Only auto-open on mouse hover (touch devices tap explicitly)
     if (event.pointerType === "mouse") {
       setShowPreview(true);
       loadPreview();
@@ -50,32 +72,39 @@ export default function MovieCard({ movie }) {
   }
 
   function handlePointerLeave() {
+    // If the user pinned the card open via the button, keep it open; otherwise hide
     if (!isPinned) {
       setShowPreview(false);
     }
     resetTilt();
   }
 
-  // Keyboard accessibility
+  // --- KEYBOARD ACCESSIBILITY HANDLERS ---
+
   function handleFocus() {
     setShowPreview(true);
     loadPreview();
   }
 
   function handleBlur(event) {
+    // Close preview when keyboard focus moves outside the card
     if (!event.currentTarget.contains(event.relatedTarget)) {
       if (!isPinned) setShowPreview(false);
     }
   }
 
   function handleKeyDown(event) {
+    // Allow users to press "Escape" to dismiss the trailer preview immediately
     if (event.key === "Escape") {
       setShowPreview(false);
       setIsPinned(false);
     }
   }
 
-  // Toggle "Preview" button click (pins the trailer open or closes it)
+  /**
+   * Toggles pinned mode when user clicks the "Preview" button.
+   * Useful on tablets and mobile phones where there is no mouse hover.
+   */
   function togglePinnedPreview() {
     if (showPreview) {
       setShowPreview(false);
@@ -87,7 +116,13 @@ export default function MovieCard({ movie }) {
     }
   }
 
-  // Calculates 3D card tilt angle as the mouse moves across the poster
+  /**
+   * Calculates 3D card tilt angle as the mouse moves across the poster.
+   * Math Concept:
+   * 1. Get card bounding box: { left, top, width, height }
+   * 2. Normalize mouse position from -1.0 (left/top) to +1.0 (right/bottom)
+   * 3. Multiply by max degrees (e.g. 12deg) to get rotateX and rotateY
+   */
   function handlePosterMouseMove(event) {
     if (event.pointerType === "touch" || showPreview) return;
     const rect = posterCardRef.current?.getBoundingClientRect();
@@ -95,148 +130,177 @@ export default function MovieCard({ movie }) {
 
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+
+    // Convert pixel coordinates to normalized range [-1, +1]
     const normX = (x / rect.width) * 2 - 1;
     const normY = (y / rect.height) * 2 - 1;
 
+    // Invert Y rotation so moving up tilts forward, moving down tilts back
+    const rotateX = -normY * 12;
+    const rotateY = normX * 12;
+
     setTiltStyle({
-      transform: `perspective(800px) rotateX(${-normY * 9}deg) rotateY(${normX * 9}deg) scale3d(1.025, 1.025, 1.025)`,
+      transform: `perspective(800px) rotateX(${rotateX.toFixed(2)}deg) rotateY(${rotateY.toFixed(2)}deg) scale3d(1.025, 1.025, 1.025)`,
       transition: "transform 0.08s ease-out",
     });
 
+    // Optical glare reflection follows the angle of virtual light
+    const glareX = (x / rect.width) * 100;
+    const glareY = (y / rect.height) * 100;
     setGlareStyle({
-      opacity: 1,
-      background: `radial-gradient(circle 220px at ${(x / rect.width) * 100}% ${(y / rect.height) * 100}%, rgba(255, 255, 255, 0.22), transparent 70%)`,
+      opacity: 0.18,
+      background: `radial-gradient(circle at ${glareX}% ${glareY}%, rgba(255, 255, 255, 0.8) 0%, transparent 65%)`,
     });
   }
 
+  // Smoothly resets the card back to flat position when cursor leaves
   function resetTilt() {
     setTiltStyle({
       transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
-      transition: "transform 0.4s ease-out",
+      transition: "transform 0.35s ease-out",
     });
-    setGlareStyle({
-      opacity: 0,
-      transition: "opacity 0.4s ease-out",
-    });
+    setGlareStyle({ opacity: 0 });
   }
 
   return (
     <article
-      className="group min-w-0"
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
+      tabIndex={0}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
+      className="group relative flex flex-col justify-between rounded-xl border border-line bg-surface/70 p-3 transition-colors hover:border-accent/60"
     >
+      {/* 3D Tilt Poster Section */}
       <div
         ref={posterCardRef}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
         onPointerMove={handlePosterMouseMove}
-        onPointerLeave={resetTilt}
         style={tiltStyle}
-        className="movie-art relative aspect-[2/3] will-change-transform shadow-md transition-shadow duration-300 hover:shadow-[0_12px_32px_rgba(56,189,248,0.18)]"
+        className="movie-art relative aspect-[2/3] w-full overflow-hidden rounded-lg will-change-transform"
       >
-        {/* Holographic Specular Glare Overlay */}
-        <div
-          aria-hidden="true"
-          style={glareStyle}
-          className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-200 mix-blend-overlay"
-        />
-
-        {/* Poster Image Link */}
         <Link
           href={movieDetailHref}
-          className="absolute inset-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
-          aria-label={`View details for ${movie.title}`}
+          tabIndex={-1}
+          aria-label={`View movie details for ${movie.title}`}
+          className="absolute inset-0 z-10 block"
         >
           {movie.posterUrl ? (
             <Image
               src={movie.posterUrl}
-              alt=""
+              alt={movie.title}
               fill
-              sizes="(max-width: 640px) 50vw, 33vw"
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
               className="object-cover"
             />
           ) : (
-            <span className="movie-art-label">POSTER UNAVAILABLE</span>
+            <div className="flex h-full w-full items-center justify-center p-4 text-center">
+              <span className="movie-art-label text-xs font-semibold text-muted">
+                {movie.title}
+              </span>
+            </div>
           )}
         </Link>
 
-        {/* Video Trailer Preview Overlay */}
-        {movie.tmdbId && (
-          <>
-            {showPreview && (
-              <div className="absolute inset-0 z-10 bg-black/90">
-                {preview?.trailerKey && (
-                  <div className="absolute left-0 top-1/2 aspect-video w-full -translate-y-1/2 overflow-hidden bg-black">
+        {/* Dynamic Holographic Glare Overlay */}
+        <div
+          aria-hidden="true"
+          style={glareStyle}
+          className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-200"
+        />
+
+        {/* Floating Quick Preview Overlay (Trailers & Ratings) */}
+        {showPreview && (
+          <div className="absolute inset-0 z-30 flex flex-col justify-between bg-black/92 p-3 text-xs backdrop-blur-xs animate-in fade-in duration-200">
+            {isLoadingPreview ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                <span>Loading preview…</span>
+              </div>
+            ) : previewError ? (
+              <div className="flex h-full items-center justify-center text-center text-muted">
+                <p>{previewError}</p>
+              </div>
+            ) : (
+              <>
+                {/* Embedded YouTube Trailer Video Player */}
+                {preview?.trailerKey ? (
+                  <div className="relative aspect-video w-full overflow-hidden rounded border border-line bg-black">
                     <iframe
-                      src={`https://www.youtube-nocookie.com/embed/${preview.trailerKey}?autoplay=1&mute=1&controls=0&playsinline=1&end=12`}
-                      title={`${movie.title} trailer preview`}
-                      className="pointer-events-none h-full w-full"
+                      src={`https://www.youtube-nocookie.com/embed/${preview.trailerKey}?autoplay=1&mute=1&playsinline=1`}
+                      title={`${movie.title} Trailer`}
                       allow="autoplay; encrypted-media"
-                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                      className="h-full w-full border-0"
                     />
+                  </div>
+                ) : (
+                  <div className="flex aspect-video w-full items-center justify-center rounded border border-line bg-surface/50 text-[11px] text-muted">
+                    No video trailer available
                   </div>
                 )}
 
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent px-3 pb-3 pt-10 text-white sm:px-4 sm:pb-4">
-                  <p className="text-sm font-semibold leading-snug">{movie.title}</p>
-                  <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-white/80">
-                    {preview?.voteAverage !== null && preview?.voteAverage !== undefined && (
-                      <span>TMDB {preview.voteAverage.toFixed(1)} / 10</span>
-                    )}
-                    {preview?.genres?.length > 0 && (
-                      <span>{preview.genres.slice(0, 3).join(" · ")}</span>
-                    )}
-                  </div>
-
-                  {isLoadingPreview && (
-                    <p role="status" className="mt-2 text-xs text-white/70">
-                      Loading preview…
+                {/* Score & Genres */}
+                <div className="mt-2 space-y-1">
+                  {typeof preview?.voteAverage === "number" && (
+                    <p className="font-semibold text-accent">
+                      ★ {preview.voteAverage.toFixed(1)} / 10
                     </p>
                   )}
-                  {preview && !preview.trailerKey && (
-                    <p className="mt-2 text-xs text-white/70">
-                      No official trailer available.
-                    </p>
-                  )}
-                  {previewError && (
-                    <p role="status" className="mt-2 text-xs text-white/70">
-                      {previewError}
+                  {preview?.genres?.length > 0 && (
+                    <p className="truncate text-[11px] text-muted">
+                      {preview.genres.slice(0, 3).join(" · ")}
                     </p>
                   )}
                 </div>
-              </div>
-            )}
 
-            {/* Preview Button */}
-            <button
-              type="button"
-              onClick={togglePinnedPreview}
-              aria-label={`${showPreview ? "Close" : "Preview"} ${movie.title} trailer`}
-              aria-pressed={showPreview}
-              className="absolute right-2 top-2 z-20 flex min-h-9 items-center gap-1.5 rounded-full border border-white/25 bg-black/75 px-3 text-xs font-medium text-white backdrop-blur transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              {showPreview ? "Close" : "Preview"}
-            </button>
-          </>
+                {/* Link to Full Movie Page */}
+                <Link
+                  href={movieDetailHref}
+                  className="mt-2 block w-full rounded bg-accent py-1.5 text-center text-[11px] font-semibold text-ink transition-opacity hover:opacity-90"
+                >
+                  View Details &amp; Stream →
+                </Link>
+              </>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Movie Details (Title, Year, Source) */}
-      <div className="pt-4">
-        <Link
-          href={movieDetailHref}
-          className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          <p className="mb-2 text-[10px] font-medium tracking-[0.16em] text-accent">
-            {movie.releaseYear || "RELEASE DATE UNAVAILABLE"}
-          </p>
-          <h3 className="text-base font-medium leading-snug sm:text-lg">
-            {movie.title}
+      {/* Movie Title & Release Year Metadata */}
+      <div className="mt-3 flex flex-1 flex-col justify-between">
+        <div>
+          <h3 className="line-clamp-1 text-sm font-medium text-foreground">
+            <Link href={movieDetailHref} className="hover:text-accent">
+              {movie.title}
+            </Link>
           </h3>
-          <p className="mt-2 text-xs text-muted">{movie.format || "Film"} · TMDB</p>
-        </Link>
+          <p className="mt-0.5 text-xs text-muted">
+            {movie.releaseYear || "Movie"}
+          </p>
+        </div>
+
+        {/* Pin Preview Button */}
+        <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5">
+          <button
+            type="button"
+            onClick={togglePinnedPreview}
+            className={`rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              isPinned
+                ? "bg-accent/20 text-accent font-semibold"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {isPinned ? "Close preview ✕" : "Quick preview"}
+          </button>
+
+          <Link
+            href={movieDetailHref}
+            className="text-[11px] font-medium text-accent hover:underline"
+          >
+            Details →
+          </Link>
+        </div>
       </div>
     </article>
   );

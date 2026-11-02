@@ -1,3 +1,19 @@
+/**
+ * ==============================================================================
+ * CINETRACK SERVER-SIDE API CLIENT
+ * ==============================================================================
+ * Concepts to Learn:
+ * 1. `import "server-only"`:
+ *    This is a Next.js security guardrail. If someone tries to import this file
+ *    into a Client Component ("use client"), Next.js will stop the build with an error.
+ *    This ensures backend API configuration and secrets never leak to the browser.
+ *
+ * 2. Next.js Caching & Revalidation (`fetchOptions.next = { revalidate }`):
+ *    Instead of fetching movie details from the database on every single page load,
+ *    Next.js caches the response for a specified duration (e.g., 3600 seconds / 1 hour).
+ *    Subsequent visitors receive cached HTML instantly, saving server resources.
+ * ==============================================================================
+ */
 import "server-only";
 import {
   MAX_DISCOVERY_PAGE,
@@ -5,9 +21,10 @@ import {
   normalizeDiscoveryRuntime,
 } from "@/lib/discoveryOptions";
 
+// Express server fallback
 const DEFAULT_API_URL = "http://localhost:4000";
 
-// Custom error class to easily identify API errors and their HTTP status codes
+// Custom error class with HTTP status codes (e.g. 404 for not found, 502 for connection issues)
 export class CineTrackApiError extends Error {
   constructor(message, status) {
     super(message);

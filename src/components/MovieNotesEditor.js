@@ -1,21 +1,53 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * MOVIE NOTES EDITOR (CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Allows cinephiles to record a personal 1-5 star rating and private review note
+ * for any movie in their library.
+ * 
+ * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
+ * 1. Native HTML5 Disclosure Element (<details> and <summary>):
+ *    Instead of importing heavy accordion or modal libraries, this uses browser-native
+ *    `<details>` / `<summary>`, providing lightweight, keyboard-accessible collapsible
+ *    editing with zero JavaScript overhead.
+ * 
+ * 2. Controlled Form Pattern:
+ *    The select dropdown and textarea bind to React state (`rating`, `review`).
+ *    On typing or selecting, state updates immediately.
+ * 
+ * 3. Dual Storage Branching:
+ *    - If `isAccountMovie` is true: saves via `updateAccountMovie()` to MongoDB.
+ *    - Otherwise: saves locally in browser via `updateMovieNotes()` in localStorage.
+ * ==============================================================================
+ */
+
 import { useState } from "react";
 import { useCineTrack } from "@/components/CineTrackProvider";
 import { MyCinemaStorageError, updateMovieNotes } from "@/lib/myCinema";
 
 export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
+  // Grab account update mutation and current authentication status from context
   const { updateAccountMovie, authStatus } = useCineTrack();
 
+  // Controlled component state initialized with existing movie properties
   const [rating, setRating] = useState(movie.rating ?? "");
   const [review, setReview] = useState(movie.review ?? "");
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Disable inputs if a save is in flight or if cloud account is unreachable
   const isSyncDisabled = isSaving || (isAccountMovie && authStatus === "error");
 
+  /**
+   * Form submission handler:
+   * Prevents standard browser page reload and routes update to appropriate storage layer.
+   */
   async function handleSubmit(event) {
-    event.preventDefault();
+    event.preventDefault(); // Stop standard browser POST/refresh behavior
     setMessage("");
     setIsSaving(true);
 
@@ -25,10 +57,12 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
         review,
       };
 
+      // Branch 1: Logged-in user -> Save to MongoDB via Express API
       if (isAccountMovie) {
         await updateAccountMovie(movie.id, updates);
         setMessage("Your private account notes have been saved.");
       } else {
+        // Branch 2: Guest user -> Save to browser localStorage
         updateMovieNotes(movie.id, updates.rating, updates.review);
         setMessage("Your personal notes were saved in this browser.");
       }
