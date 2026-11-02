@@ -5,37 +5,29 @@
  * ACCOUNT PANEL & SOCIAL HUB (CLIENT COMPONENT)
  * ==============================================================================
  * 
- * WHAT THIS COMPONENT DOES:
- * Powers user authentication (Sign In & Sign Up), profile management (handle,
- * public collection link, privacy settings), and CineTrack's social features:
- * - Connecting with other cinephiles (friends)
- * - "Movie Night Watch Match" (calculates movie watchlist overlap between friends)
+ * WHAT THIS FILE DOES:
+ * Provides user authentication, profile settings, friends manager, and collaborative
+ * "Movie Night Watch Match" for discovering movies to watch together.
  * 
- * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
- * 1. JWT Cookie-Based Authentication Flow:
- *    When a user signs in or registers, the Express backend responds with an
- *    `httpOnly` cookie (`cinetrack_token`). Next.js and the browser automatically
- *    include this cookie with every subsequent request without exposing the token to JavaScript.
- * 
- * 2. Asynchronous State Machines (isSubmitting, error):
- *    All network actions disable buttons to prevent double-clicks, display clear loading
- *    text, and catch backend errors to display friendly feedback in the UI.
- * 
- * 3. Modal Dialog Accessibility:
- *    When the "Movie Night Watch Match" modal opens, keyboard listeners bind the `Escape` key,
- *    and focus is automatically moved into the modal with `aria-modal="true"`.
+ * CORE ARCHITECTURAL CONCEPTS:
+ * 1. JWT Cookie-Based Auth: Express sends httpOnly cookie; automatically included in requests.
+ * 2. Profile Management: Setting a unique handle (@username) enables public collection sharing.
+ * 3. Friends & Social Matching: Calculates shared genre affinities and watchlist overlap.
  * ==============================================================================
  */
 
 import { useEffect, useRef, useState } from "react";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
-// Common styling classes for input fields
+// Common styling class for text and select inputs
 const inputClass =
   "min-h-11 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
+/**
+ * Main Account Component:
+ * Displays Login/Register form when signed out, and Profile/Friends when signed in.
+ */
 export default function AccountPanel() {
-  // Grab user state and authentication actions from CineTrack context
   const {
     user,
     authStatus,
@@ -46,7 +38,6 @@ export default function AccountPanel() {
     updateProfile,
   } = useCineTrack();
 
-  // Local form state
   const [mode, setMode] = useState("register"); // 'register' or 'login'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,58 +46,42 @@ export default function AccountPanel() {
 
   const isRegister = mode === "register";
 
-  /**
-   * Handles Form Submit:
-   * Prevents full browser reload, triggers register or login, and clears password on success.
-   */
+  // Handles form submission (Login or Register)
   async function handleSubmit(event) {
-    event.preventDefault(); // Stop standard HTTP POST reload
+    event.preventDefault();
     setError("");
     setIsSubmitting(true);
 
     try {
       const authAction = isRegister ? register : login;
       await authAction({ email, password });
-      setPassword(""); // Clear sensitive password from memory on success
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Your account request could not be completed.",
-      );
+      setPassword(""); // Clear sensitive password
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Your account request could not be completed.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  /**
-   * Handles Sign Out:
-   * Clears the server-side JWT cookie and resets local state to anonymous.
-   */
+  // Handles logout
   async function handleLogout() {
     setError("");
     setIsSubmitting(true);
     try {
       await logout();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "You could not be signed out.",
-      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "You could not be signed out.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  // 1. Loading state while probing existing session
   if (authStatus === "checking") {
-    return (
-      <p role="status" className="text-sm text-muted">
-        Checking your account…
-      </p>
-    );
+    return <p role="status" className="text-sm text-muted">Checking your account…</p>;
   }
 
+  // 2. Authenticated state: Show user profile and friends
   if (user) {
     return (
       <section className="max-w-xl rounded-xl border border-line bg-surface p-6 sm:p-8">
@@ -129,16 +104,8 @@ export default function AccountPanel() {
           </button>
         </div>
 
-        {cinemaError && (
-          <p role="alert" className="mt-5 text-sm leading-6 text-muted">
-            {cinemaError}
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="mt-5 text-sm leading-6 text-muted">
-            {error}
-          </p>
-        )}
+        {cinemaError && <p role="alert" className="mt-5 text-sm leading-6 text-muted">{cinemaError}</p>}
+        {error && <p role="alert" className="mt-5 text-sm leading-6 text-muted">{error}</p>}
 
         <ProfileSettings user={user} updateProfile={updateProfile} />
         <FriendsManager />
@@ -146,6 +113,7 @@ export default function AccountPanel() {
     );
   }
 
+  // 3. Unauthenticated state: Login / Register Form
   return (
     <section className="max-w-xl rounded-xl border border-line bg-surface p-6 sm:p-8">
       <p className="eyebrow mb-4">
@@ -159,6 +127,7 @@ export default function AccountPanel() {
         Your collection stays private and syncs through your CineTrack account.
         Existing browser-saved movies are imported after sign-in.
       </p>
+
       {authStatus === "error" && (
         <p role="alert" className="mt-5 text-sm leading-6 text-muted">
           Your saved browser collection is still available, but account status
@@ -169,10 +138,7 @@ export default function AccountPanel() {
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
-          <label
-            htmlFor="account-email"
-            className="mb-2 block text-xs font-medium text-muted"
-          >
+          <label htmlFor="account-email" className="mb-2 block text-xs font-medium text-muted">
             Email
           </label>
           <input
@@ -188,10 +154,7 @@ export default function AccountPanel() {
         </div>
 
         <div>
-          <label
-            htmlFor="account-password"
-            className="mb-2 block text-xs font-medium text-muted"
-          >
+          <label htmlFor="account-password" className="mb-2 block text-xs font-medium text-muted">
             Password
           </label>
           <input
@@ -205,22 +168,12 @@ export default function AccountPanel() {
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
           />
-          {isRegister && (
-            <p className="mt-2 text-xs text-muted">
-              Use at least 12 characters.
-            </p>
-          )}
+          {isRegister && <p className="mt-2 text-xs text-muted">Use at least 12 characters.</p>}
         </div>
 
-        {error && (
-          <p role="alert" className="text-sm leading-6 text-muted">
-            {error}
-          </p>
-        )}
+        {error && <p role="alert" className="text-sm leading-6 text-muted">{error}</p>}
         {cinemaError && authStatus === "error" && (
-          <p role="alert" className="text-sm leading-6 text-muted">
-            {cinemaError}
-          </p>
+          <p role="alert" className="text-sm leading-6 text-muted">{cinemaError}</p>
         )}
 
         <button
@@ -228,11 +181,7 @@ export default function AccountPanel() {
           disabled={isSubmitting}
           className="min-h-11 w-full rounded-lg bg-accent px-5 text-sm font-semibold text-ink transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
         >
-          {isSubmitting
-            ? "Please wait…"
-            : isRegister
-              ? "Create account"
-              : "Sign in"}
+          {isSubmitting ? "Please wait…" : isRegister ? "Create account" : "Sign in"}
         </button>
       </form>
 
@@ -244,16 +193,15 @@ export default function AccountPanel() {
         }}
         className="mt-5 text-sm text-muted underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
       >
-        {isRegister
-          ? "Already have an account? Sign in"
-          : "New to CineTrack? Create an account"}
+        {isRegister ? "Already have an account? Sign in" : "New to CineTrack? Create an account"}
       </button>
     </section>
   );
 }
 
 /**
- * Displays profile overview, public cinema share link, and edit toggle.
+ * Profile Settings:
+ * Shows current handle, public cinema link, and edit form toggle.
  */
 function ProfileSettings({ user, updateProfile }) {
   const [isEditing, setIsEditing] = useState(!user.handle);
@@ -279,17 +227,11 @@ function ProfileSettings({ user, updateProfile }) {
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-                Username
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Username</p>
               <div className="mt-1 flex items-center gap-2">
-                <span className="text-lg font-semibold text-accent">
-                  @{user.handle}
-                </span>
+                <span className="text-lg font-semibold text-accent">@{user.handle}</span>
                 {user.displayName && (
-                  <span className="text-sm text-foreground">
-                    ({user.displayName})
-                  </span>
+                  <span className="text-sm text-foreground">({user.displayName})</span>
                 )}
               </div>
               <p className="mt-1 text-xs text-muted">
@@ -312,9 +254,7 @@ function ProfileSettings({ user, updateProfile }) {
           </div>
 
           {message && (
-            <p role="status" className="text-xs font-medium text-emerald-400">
-              {message}
-            </p>
+            <p role="status" className="text-xs font-medium text-emerald-400">{message}</p>
           )}
 
           {user.collectionPrivacy === "public" && (
@@ -322,9 +262,7 @@ function ProfileSettings({ user, updateProfile }) {
               <p className="text-xs font-medium uppercase tracking-wider text-accent">
                 Your Public Cinema Link
               </p>
-              <p className="mt-1 break-all font-mono text-xs text-muted">
-                {shareUrl}
-              </p>
+              <p className="mt-1 break-all font-mono text-xs text-muted">{shareUrl}</p>
               <div className="mt-3 flex gap-3">
                 <button
                   type="button"
@@ -361,14 +299,13 @@ function ProfileSettings({ user, updateProfile }) {
 }
 
 /**
- * Form to update handle, display name, and privacy status.
+ * Profile Edit Form:
+ * Modifies handle, display name, and public/private privacy.
  */
 function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
   const [handle, setHandle] = useState(user.handle || "");
   const [displayName, setDisplayName] = useState(user.displayName || "");
-  const [collectionPrivacy, setCollectionPrivacy] = useState(
-    user.collectionPrivacy || "private",
-  );
+  const [collectionPrivacy, setCollectionPrivacy] = useState(user.collectionPrivacy || "private");
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -378,16 +315,10 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
     setSaveError("");
 
     try {
-      await updateProfile({
-        handle,
-        displayName,
-        collectionPrivacy,
-      });
+      await updateProfile({ handle, displayName, collectionPrivacy });
       onDone();
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : "Could not update profile.",
-      );
+      setSaveError(err instanceof Error ? err.message : "Could not update profile.");
     } finally {
       setIsSaving(false);
     }
@@ -401,8 +332,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
             {user.handle ? "Edit Profile & Sharing" : "Create Unique Username"}
           </h3>
           <p className="mt-1 text-xs text-muted">
-            Choose a unique handle to share your collection without revealing
-            your email address.
+            Choose a unique handle to share your collection without revealing your email address.
           </p>
         </div>
         {onCancel && (
@@ -418,10 +348,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
 
       <form onSubmit={handleSave} className="mt-6 space-y-4">
         <div>
-          <label
-            htmlFor="account-handle"
-            className="mb-2 block text-xs font-medium text-muted"
-          >
+          <label htmlFor="account-handle" className="mb-2 block text-xs font-medium text-muted">
             Handle (3–30 lowercase letters, numbers, or _)
           </label>
           <div className="flex items-center rounded-lg border border-line bg-background px-3">
@@ -440,10 +367,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
         </div>
 
         <div>
-          <label
-            htmlFor="account-display-name"
-            className="mb-2 block text-xs font-medium text-muted"
-          >
+          <label htmlFor="account-display-name" className="mb-2 block text-xs font-medium text-muted">
             Display name (optional)
           </label>
           <input
@@ -458,10 +382,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
         </div>
 
         <div>
-          <label
-            htmlFor="account-privacy"
-            className="mb-2 block text-xs font-medium text-muted"
-          >
+          <label htmlFor="account-privacy" className="mb-2 block text-xs font-medium text-muted">
             Collection Privacy
           </label>
           <select
@@ -470,19 +391,13 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
             onChange={(e) => setCollectionPrivacy(e.target.value)}
             className={inputClass}
           >
-            <option value="private">
-              Private (Only you can view your collection)
-            </option>
-            <option value="public">
-              Public (Anyone with your link can view)
-            </option>
+            <option value="private">Private (Only you can view your collection)</option>
+            <option value="public">Public (Anyone with your link can view)</option>
           </select>
         </div>
 
         {saveError && (
-          <p role="alert" className="text-xs font-medium text-rose-400">
-            {saveError}
-          </p>
+          <p role="alert" className="text-xs font-medium text-rose-400">{saveError}</p>
         )}
 
         <div className="flex items-center gap-3">
@@ -509,11 +424,11 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
 }
 
 /**
- * Manages friend requests, friends list, and initiates Movie Night Match.
+ * Friends Manager:
+ * Search handles, send friend requests, accept/decline incoming, and launch Watch Match.
  */
 function FriendsManager() {
-  const { getFriends, sendFriendRequest, acceptFriendRequest, removeFriend } =
-    useCineTrack();
+  const { getFriends, sendFriendRequest, acceptFriendRequest, removeFriend } = useCineTrack();
 
   const [data, setData] = useState({ friends: [], incoming: [], outgoing: [] });
   const [loading, setLoading] = useState(true);
@@ -523,14 +438,13 @@ function FriendsManager() {
   const [error, setError] = useState("");
   const [activeMatchFriend, setActiveMatchFriend] = useState(null);
 
+  // Reloads friends data from the backend
   async function refreshFriends() {
     try {
       const result = await getFriends();
       setData(result || { friends: [], incoming: [], outgoing: [] });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not reload friends list.",
-      );
+      setError(err instanceof Error ? err.message : "Could not reload friends list.");
     }
   }
 
@@ -547,9 +461,7 @@ function FriendsManager() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : "Could not load friends list.",
-          );
+          setError(err instanceof Error ? err.message : "Could not load friends list.");
           setLoading(false);
         }
       }
@@ -561,7 +473,7 @@ function FriendsManager() {
     };
   }, [getFriends]);
 
-  // Shared helper to run friend actions cleanly
+  // Runs friend actions with consistent error handling and refresh
   async function runFriendAction(actionFn, successMessage) {
     setMessage("");
     setError("");
@@ -570,12 +482,11 @@ function FriendsManager() {
       if (successMessage) setMessage(successMessage);
       await refreshFriends();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Action could not be completed.",
-      );
+      setError(err instanceof Error ? err.message : "Action could not be completed.");
     }
   }
 
+  // Sends a friend request to a handle
   async function handleSendRequest(event) {
     event.preventDefault();
     const handle = targetHandle.trim().toLowerCase();
@@ -597,20 +508,15 @@ function FriendsManager() {
   return (
     <div className="mt-8 border-t border-line/70 pt-8">
       <div>
-        <h3 className="text-lg font-medium text-foreground">
-          Friends &amp; Connections
-        </h3>
+        <h3 className="text-lg font-medium text-foreground">Friends &amp; Connections</h3>
         <p className="mt-1 text-xs text-muted">
-          Connect with friends using their unique handle to view their
-          friends-only cinema collections.
+          Connect with friends using their unique handle to view their friends-only cinema collections.
         </p>
       </div>
 
+      {/* Add friend form */}
       <form onSubmit={handleSendRequest} className="mt-4">
-        <label
-          htmlFor="friend-handle-input"
-          className="mb-2 block text-xs font-medium text-muted"
-        >
+        <label htmlFor="friend-handle-input" className="mb-2 block text-xs font-medium text-muted">
           Add friend by handle
         </label>
         <div className="flex gap-2">
@@ -637,16 +543,8 @@ function FriendsManager() {
         </div>
       </form>
 
-      {message && (
-        <p role="status" className="mt-3 text-xs font-medium text-emerald-400">
-          {message}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="mt-3 text-xs font-medium text-rose-400">
-          {error}
-        </p>
-      )}
+      {message && <p role="status" className="mt-3 text-xs font-medium text-emerald-400">{message}</p>}
+      {error && <p role="alert" className="mt-3 text-xs font-medium text-rose-400">{error}</p>}
 
       {/* Incoming Requests */}
       {data.incoming && data.incoming.length > 0 && (
@@ -656,20 +554,12 @@ function FriendsManager() {
           </p>
           <div className="mt-3 divide-y divide-line/60">
             {data.incoming.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between py-2 text-sm"
-              >
+              <div key={item.id} className="flex items-center justify-between py-2 text-sm">
                 <div>
-                  <span className="font-semibold text-foreground">
-                    @{item.requester.handle}
-                  </span>
-                  {item.requester.displayName &&
-                    item.requester.displayName !== item.requester.handle && (
-                      <span className="ml-1 text-xs text-muted">
-                        ({item.requester.displayName})
-                      </span>
-                    )}
+                  <span className="font-semibold text-foreground">@{item.requester.handle}</span>
+                  {item.requester.displayName && item.requester.displayName !== item.requester.handle && (
+                    <span className="ml-1 text-xs text-muted">({item.requester.displayName})</span>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -711,10 +601,7 @@ function FriendsManager() {
           </p>
           <div className="mt-3 divide-y divide-line/60">
             {data.outgoing.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between py-2 text-sm"
-              >
+              <div key={item.id} className="flex items-center justify-between py-2 text-sm">
                 <span className="text-muted">@{item.recipient.handle}</span>
                 <button
                   type="button"
@@ -744,8 +631,7 @@ function FriendsManager() {
           <p className="mt-3 text-xs text-muted">Loading friends…</p>
         ) : !data.friends || data.friends.length === 0 ? (
           <p className="mt-3 text-xs text-muted">
-            No friends connected yet. Connect with other cinephiles using their
-            handle above!
+            No friends connected yet. Connect with other cinephiles using their handle above!
           </p>
         ) : (
           <div className="mt-3 space-y-2">
@@ -755,15 +641,10 @@ function FriendsManager() {
                 className="flex items-center justify-between rounded-lg border border-line bg-background/50 p-3"
               >
                 <div>
-                  <span className="font-semibold text-accent">
-                    @{item.friend.handle}
-                  </span>
-                  {item.friend.displayName &&
-                    item.friend.displayName !== item.friend.handle && (
-                      <span className="ml-1 text-xs text-muted">
-                        ({item.friend.displayName})
-                      </span>
-                    )}
+                  <span className="font-semibold text-accent">@{item.friend.handle}</span>
+                  {item.friend.displayName && item.friend.displayName !== item.friend.handle && (
+                    <span className="ml-1 text-xs text-muted">({item.friend.displayName})</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -800,6 +681,7 @@ function FriendsManager() {
         )}
       </div>
 
+      {/* Watch Match Modal */}
       {activeMatchFriend && (
         <MovieNightMatchModal
           friend={activeMatchFriend}
@@ -811,7 +693,8 @@ function FriendsManager() {
 }
 
 /**
- * Modal to discover matching tastes and shared watchlist movies for movie night.
+ * Movie Night Watch Match Modal:
+ * Calculates shared taste signals and shows movies on both users' watchlists.
  */
 function MovieNightMatchModal({ friend, onClose }) {
   const { getMovieNightMatch, saveAccountMovie } = useCineTrack();
@@ -821,21 +704,19 @@ function MovieNightMatchModal({ friend, onClose }) {
   const [savedIds, setSavedIds] = useState(new Set());
   const closeButtonRef = useRef(null);
 
+  // Focus trap and Escape key listener
   useEffect(() => {
     closeButtonRef.current?.focus();
 
     function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        onClose();
-      }
+      if (event.key === "Escape") onClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  // Load match data
   useEffect(() => {
     let cancelled = false;
 
@@ -848,11 +729,7 @@ function MovieNightMatchModal({ friend, onClose }) {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Could not compute Watch Match.",
-          );
+          setError(err instanceof Error ? err.message : "Could not compute Watch Match.");
           setLoading(false);
         }
       }
@@ -864,6 +741,7 @@ function MovieNightMatchModal({ friend, onClose }) {
     };
   }, [friend.handle, getMovieNightMatch]);
 
+  // Saves a recommended movie to user's library
   async function handleSave(movie) {
     try {
       await saveAccountMovie({
@@ -893,10 +771,7 @@ function MovieNightMatchModal({ friend, onClose }) {
               <span aria-hidden="true" />
               COLLABORATIVE DISCOVERY
             </p>
-            <h2
-              id="watch-match-title"
-              className="text-xl font-medium sm:text-2xl"
-            >
+            <h2 id="watch-match-title" className="text-xl font-medium sm:text-2xl">
               Movie Night Watch Match
             </h2>
             <p className="mt-1 text-xs text-accent">
@@ -919,15 +794,12 @@ function MovieNightMatchModal({ friend, onClose }) {
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
             <p className="text-sm text-muted">
-              Blending your collections and calculating shared taste
-              affinities…
+              Blending your collections and calculating shared taste affinities…
             </p>
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <p role="alert" className="text-sm text-rose-400">
-              {error}
-            </p>
+            <p role="alert" className="text-sm text-rose-400">{error}</p>
             <button
               type="button"
               onClick={onClose}
@@ -938,14 +810,13 @@ function MovieNightMatchModal({ friend, onClose }) {
           </div>
         ) : data ? (
           <div className="mt-6 space-y-6">
+            {/* Common Taste Genres */}
             {data.commonGenres && data.commonGenres.length > 0 && (
               <div className="rounded-xl border border-line/70 bg-background/50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                   Common Taste Signals
                 </p>
-                <p className="mt-1 text-xs text-muted">
-                  Genres both of you watch and rate highly:
-                </p>
+                <p className="mt-1 text-xs text-muted">Genres both of you watch and rate highly:</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {data.commonGenres.map((genre) => (
                     <span
@@ -959,24 +830,21 @@ function MovieNightMatchModal({ friend, onClose }) {
               </div>
             )}
 
+            {/* Shared Watchlist Movies */}
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
                   Shared Watchlist Overlap
                 </h3>
                 <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                  {data.sharedWatchlist.length} Instant{" "}
-                  {data.sharedWatchlist.length === 1 ? "Win" : "Wins"}
+                  {data.sharedWatchlist.length} Instant {data.sharedWatchlist.length === 1 ? "Win" : "Wins"}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-muted">
-                Films both of you already saved to watch:
-              </p>
+              <p className="mt-1 text-xs text-muted">Films both of you already saved to watch:</p>
 
               {data.sharedWatchlist.length === 0 ? (
                 <p className="mt-3 rounded-lg border border-line/40 bg-background/30 p-3 text-xs text-muted">
-                  No overlapping saved movies yet. Check out fresh shared picks
-                  below!
+                  No overlapping saved movies yet. Check out fresh shared picks below!
                 </p>
               ) : (
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -994,12 +862,8 @@ function MovieNightMatchModal({ friend, onClose }) {
                           loading="lazy"
                         />
                       )}
-                      <p className="mt-2 font-medium line-clamp-1">
-                        {movie.title}
-                      </p>
-                      <p className="text-muted">
-                        {movie.releaseYear || "Movie"}
-                      </p>
+                      <p className="mt-2 font-medium line-clamp-1">{movie.title}</p>
+                      <p className="text-muted">{movie.releaseYear || "Movie"}</p>
                       <span className="mt-1 inline-block text-[10px] text-emerald-400">
                         ✓ On both watchlists
                       </span>
@@ -1009,13 +873,12 @@ function MovieNightMatchModal({ friend, onClose }) {
               )}
             </div>
 
+            {/* Shared Recommendations */}
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
                 Fresh Picks For Tonight
               </h3>
-              <p className="mt-1 text-xs text-muted">
-                Unseen movies matching your shared genres:
-              </p>
+              <p className="mt-1 text-xs text-muted">Unseen movies matching your shared genres:</p>
 
               {data.recommendations.length === 0 ? (
                 <p className="mt-3 rounded-lg border border-line/40 bg-background/30 p-3 text-xs text-muted">
@@ -1040,12 +903,8 @@ function MovieNightMatchModal({ friend, onClose }) {
                               loading="lazy"
                             />
                           )}
-                          <p className="mt-2 font-medium line-clamp-1">
-                            {movie.title}
-                          </p>
-                          <p className="text-muted">
-                            {movie.releaseYear || "Movie"}
-                          </p>
+                          <p className="mt-2 font-medium line-clamp-1">{movie.title}</p>
+                          <p className="text-muted">{movie.releaseYear || "Movie"}</p>
                         </div>
                         <button
                           type="button"
