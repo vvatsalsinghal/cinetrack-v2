@@ -6,15 +6,12 @@ import PersonalizedRecommendations from "@/components/PersonalizedRecommendation
 import HomeCinemaPulse from "@/components/HomeCinemaPulse";
 import SectionHeading from "@/components/SectionHeading";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
 import ValueHighlights from "@/components/ValueHighlights";
 
 export default function Home() {
   return (
     <main id="main-content" className="relative isolate overflow-hidden">
       <div aria-hidden="true" className="cinema-grid pointer-events-none" />
-
-      <SiteHeader />
 
       <HeroSection />
 

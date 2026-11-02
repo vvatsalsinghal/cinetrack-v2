@@ -1,7 +1,6 @@
 import Link from "next/link";
 import MyCinemaCollection from "@/components/MyCinemaCollection";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
 
 export const metadata = {
   title: "My Cinema | CineTrack",
@@ -11,7 +10,6 @@ export const metadata = {
 export default function MyCinemaPage() {
   return (
     <main id="main-content" className="min-h-screen">
-      <SiteHeader />
       <section className="mx-auto max-w-7xl px-6 py-12 sm:py-16 lg:px-10">
         <Link
           href="/"

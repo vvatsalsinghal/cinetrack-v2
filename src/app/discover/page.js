@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import Link from "next/link";
 import PopularMovieDiscovery from "@/components/PopularMovieDiscovery";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
 
 export const metadata = {
   title: "Discover Movies | CineTrack",
@@ -22,7 +21,6 @@ export default function DiscoverPage({ searchParams }) {
   return (
     <main id="main-content" className="relative isolate min-h-screen overflow-hidden">
       <div aria-hidden="true" className="cinema-grid pointer-events-none" />
-      <SiteHeader />
       <section className="mx-auto max-w-7xl px-6 pb-16 pt-8 lg:px-10 lg:pb-20">
         <Link
           href="/"

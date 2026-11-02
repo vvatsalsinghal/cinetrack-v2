@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import Image from "next/image";
-import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 import { CineTrackApiError, getApiPublicCinema } from "@/lib/cinetrackApi";
 
@@ -290,7 +289,6 @@ async function PublicCinemaContent({ params, searchParams }) {
 export default function PublicCinemaPage({ params, searchParams }) {
   return (
     <main id="main-content" className="min-h-screen">
-      <SiteHeader />
       <section className="mx-auto max-w-7xl px-6 py-12 sm:py-16 lg:px-10">
         <Link
           href="/"

@@ -35,18 +35,30 @@ export default function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-line/50 bg-background/80 backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full border-b border-line/50 bg-background/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5 lg:px-10">
-          {/* Brand Logo */}
+          {/* Brand Logo with Cinema Film Reel Icon */}
           <Link
             href="/"
             aria-label="CineTrack home"
-            className="flex items-center gap-3 transition-opacity hover:opacity-90"
+            className="flex items-center gap-2.5 transition-opacity hover:opacity-90"
           >
-            <span aria-hidden="true" className="brand-mark">
-              <span />
-              <span />
-              <span />
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-accent/40 bg-accent/15 text-accent shadow-sm"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4" />
+              </svg>
             </span>
             <span className="text-xl font-semibold tracking-tight">
               Cine<span className="text-accent">Track</span>
@@ -148,10 +160,22 @@ export default function SiteHeader() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2.5"
                 >
-                  <span aria-hidden="true" className="brand-mark">
-                    <span />
-                    <span />
-                    <span />
+                  <span
+                    aria-hidden="true"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-accent/40 bg-accent/15 text-accent shadow-sm"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3.5 w-3.5"
+                    >
+                      <rect width="18" height="18" x="3" y="3" rx="2" />
+                      <path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4" />
+                    </svg>
                   </span>
                   <span className="font-semibold tracking-tight text-foreground">
                     Cine<span className="text-accent">Track</span>

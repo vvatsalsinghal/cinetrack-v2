@@ -2,12 +2,11 @@ import { Suspense } from "react";
 import Link from "next/link";
 import CinemaPulse from "@/components/CinemaPulse";
 import SiteFooter from "@/components/SiteFooter";
-import SiteHeader from "@/components/SiteHeader";
 
 export const metadata = {
-  title: "Cinema Pulse — Regional & Global Cinema News | CineTrack",
+  title: "Cinema Pulse | CineTrack",
   description:
-    "Follow breaking film updates, festival dispatches, and industry headlines tailored by region and language.",
+    "Real-time cinema journalism and movie news across Indian and global film industries.",
 };
 
 function NewsLoading() {
@@ -35,7 +34,6 @@ export default function NewsPage({ searchParams }) {
   return (
     <main id="main-content" className="relative isolate min-h-screen overflow-hidden">
       <div aria-hidden="true" className="cinema-grid pointer-events-none" />
-      <SiteHeader />
       <section className="mx-auto max-w-7xl px-6 pb-16 pt-8 lg:px-10 lg:pb-20">
         <Link
           href="/"
@@ -64,4 +62,3 @@ export default function NewsPage({ searchParams }) {
     </main>
   );
 }
-
