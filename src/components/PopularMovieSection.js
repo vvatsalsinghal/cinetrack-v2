@@ -137,8 +137,8 @@ export default function PopularMovieSection() {
           });
         }
 
-        // If internal route returned 404 or non-ok, attempt fallback to Express server
-        if (!response.ok && response.status === 404) {
+        // If internal route returned non-ok, attempt fallback to Express server
+        if (!response.ok) {
           try {
             const apiUrl = getApiUrl();
             const fallbackRes = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
