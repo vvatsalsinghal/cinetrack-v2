@@ -5,9 +5,8 @@ import Link from "next/link";
 import MovieShelf from "@/components/MovieShelf";
 
 const DEFAULT_API_URL = "http://localhost:4000";
-const TMDB_IMAGE_URL =
-  /^https:\/\/image\.tmdb\.org\/t\/p\/w500\/[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)$/i;
 
+// Three tabs for exploring cinema
 const CINEMA_CHANNELS = [
   {
     id: "indian",
@@ -38,63 +37,63 @@ const CINEMA_CHANNELS = [
   },
 ];
 
+// Resolves the backend URL (Express on Railway / localhost)
 function getApiUrl() {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim() || DEFAULT_API_URL;
-
+  const configured = process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim();
+  if (!configured) return DEFAULT_API_URL;
   try {
-    const url = new URL(configuredUrl);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("The Express API URL must use HTTP or HTTPS.");
-    }
-
-    return url.origin;
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error("The Express API URL is not valid.");
-    }
-
-    throw error;
+    return new URL(configured).origin;
+  } catch {
+    return DEFAULT_API_URL;
   }
 }
 
-function parsePopularMovies(payload) {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !Array.isArray(payload.results)
-  ) {
-    throw new Error("The Express API returned an unexpected movie response.");
-  }
+// Converts raw movie results from the API into clean, consistent card objects
+function formatMovies(results) {
+  if (!Array.isArray(results)) return [];
 
-  return payload.results.map((movie) => {
-    if (
-      typeof movie !== "object" ||
-      movie === null ||
-      !Number.isInteger(movie.id) ||
-      movie.id < 1 ||
-      typeof movie.title !== "string" ||
-      !movie.title.trim() ||
-      (movie.releaseYear !== null &&
-        (typeof movie.releaseYear !== "string" ||
-          !/^\d{4}$/.test(movie.releaseYear))) ||
-      (movie.posterUrl !== null &&
-        (typeof movie.posterUrl !== "string" ||
-          !TMDB_IMAGE_URL.test(movie.posterUrl)))
-    ) {
-      throw new Error("The Express API returned an invalid movie.");
-    }
-
-    return {
+  return results
+    .filter((movie) => movie && movie.id && movie.title)
+    .map((movie) => ({
       id: `tmdb-${movie.id}`,
       tmdbId: movie.id,
       title: movie.title.trim(),
-      releaseYear: movie.releaseYear,
-      posterUrl: movie.posterUrl,
+      releaseYear: movie.releaseYear || null,
+      posterUrl: movie.posterUrl || null,
       format: "Film",
       source: "tmdb",
-    };
+    }));
+}
+
+// Fetches popular movies from the local Next.js route, falling back to Express if needed
+async function fetchPopularMovies(queryString, signal) {
+  // 1. Attempt Next.js native API route (/api/movies/popular)
+  try {
+    const res = await fetch(`/api/movies/popular${queryString}`, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return formatMovies(data.results);
+    }
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+  }
+
+  // 2. Fallback to Express backend if the internal route is unavailable
+  const apiUrl = getApiUrl();
+  const fallbackRes = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
+    headers: { Accept: "application/json" },
+    signal,
   });
+
+  if (!fallbackRes.ok) {
+    throw new Error(`Could not load popular movies (HTTP ${fallbackRes.status})`);
+  }
+
+  const fallbackData = await fallbackRes.json();
+  return formatMovies(fallbackData.results);
 }
 
 export default function PopularMovieSection() {
@@ -113,87 +112,32 @@ export default function PopularMovieSection() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const queryString = activeChannelConfig.queryParams
+      ? `?${activeChannelConfig.queryParams}`
+      : "";
 
-    async function loadPopularMovies() {
-      try {
-        const queryString = activeChannelConfig.queryParams
-          ? `?${activeChannelConfig.queryParams}`
-          : "";
-
-        // First attempt Next.js native API route (/api/movies/popular)
-        // This ensures Vercel production deployment has zero dependency on external Railway backend
-        let response;
-        try {
-          response = await fetch(`/api/movies/popular${queryString}`, {
-            headers: { Accept: "application/json" },
-            signal: controller.signal,
-          });
-        } catch {
-          // If relative fetch fails in rare test environments, fallback to configured Express backend
-          const apiUrl = getApiUrl();
-          response = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
-            headers: { Accept: "application/json" },
-            signal: controller.signal,
-          });
-        }
-
-        // If internal route returned non-ok, attempt fallback to Express server
-        if (!response.ok) {
-          try {
-            const apiUrl = getApiUrl();
-            const fallbackRes = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
-              headers: { Accept: "application/json" },
-              signal: controller.signal,
-            });
-            if (fallbackRes.ok) {
-              response = fallbackRes;
-            }
-          } catch {
-            // Keep original response
-          }
-        }
-
-        let payload;
-        try {
-          payload = await response.json();
-        } catch (error) {
-          if (error instanceof SyntaxError) {
-            throw new Error("The API returned an unreadable response.");
-          }
-          throw error;
-        }
-
-        if (!response.ok) {
-          throw new Error(
-            typeof payload?.error === "string"
-              ? payload.error
-              : `The API returned HTTP ${response.status}.`,
-          );
-        }
-
-        const movies = parsePopularMovies(payload);
+    fetchPopularMovies(queryString, controller.signal)
+      .then((movies) => {
         if (!controller.signal.aborted) {
-          setResult({ status: movies.length > 0 ? "success" : "empty", movies });
+          setResult({
+            status: movies.length > 0 ? "success" : "empty",
+            movies,
+          });
         }
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setResult({
+            status: "error",
+            message: error.message || "The popular movies could not be loaded.",
+          });
         }
+      });
 
-        const message =
-          error instanceof TypeError
-            ? "Could not connect to the Express API. Start it in a second terminal with npm run dev:api."
-            : error instanceof Error
-              ? error.message
-              : "The popular movies could not be loaded.";
-        setResult({ status: "error", message });
-      }
-    }
-
-    loadPopularMovies();
     return () => controller.abort();
   }, [activeChannelConfig.queryParams]);
 
+  // Tab buttons (Indian Cinema / Trending in India / Global Cinema)
   const channelNav = (
     <div className="mb-8 flex flex-wrap gap-2.5">
       {CINEMA_CHANNELS.map((channel) => {
@@ -218,10 +162,7 @@ export default function PopularMovieSection() {
 
   if (result.status === "loading") {
     return (
-      <section
-        aria-labelledby="popular-movies-title"
-        className="border-t border-line"
-      >
+      <section aria-labelledby="popular-movies-title" className="border-t border-line">
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-20">
           <p className="eyebrow mb-4">
             <span aria-hidden="true" />
@@ -244,10 +185,7 @@ export default function PopularMovieSection() {
 
   if (result.status === "error") {
     return (
-      <section
-        aria-labelledby="popular-movies-title"
-        className="border-t border-line"
-      >
+      <section aria-labelledby="popular-movies-title" className="border-t border-line">
         <div className="mx-auto max-w-7xl px-6 py-16 lg:px-10 lg:py-20">
           <p className="eyebrow mb-4">
             <span aria-hidden="true" />

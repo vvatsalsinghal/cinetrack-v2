@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useCineTrack } from "@/components/CineTrackProvider";
 
-const baseInputClass =
+const inputClass =
   "min-h-11 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 export default function AccountPanel() {
@@ -16,11 +16,14 @@ export default function AccountPanel() {
     logout,
     updateProfile,
   } = useCineTrack();
+
   const [mode, setMode] = useState("register");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isRegister = mode === "register";
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -28,11 +31,8 @@ export default function AccountPanel() {
     setIsSubmitting(true);
 
     try {
-      if (mode === "register") {
-        await register({ email, password });
-      } else {
-        await login({ email, password });
-      }
+      const authAction = isRegister ? register : login;
+      await authAction({ email, password });
       setPassword("");
     } catch (requestError) {
       setError(
@@ -103,7 +103,7 @@ export default function AccountPanel() {
         )}
 
         <ProfileSettings user={user} updateProfile={updateProfile} />
-        <FriendsManager user={user} />
+        <FriendsManager />
       </section>
     );
   }
@@ -112,10 +112,10 @@ export default function AccountPanel() {
     <section className="max-w-xl rounded-xl border border-line bg-surface p-6 sm:p-8">
       <p className="eyebrow mb-4">
         <span aria-hidden="true" />
-        {mode === "register" ? "CREATE YOUR ACCOUNT" : "WELCOME BACK"}
+        {isRegister ? "CREATE YOUR ACCOUNT" : "WELCOME BACK"}
       </p>
       <h2 className="text-xl font-medium">
-        {mode === "register" ? "Keep your cinema with you." : "Sign in to CineTrack."}
+        {isRegister ? "Keep your cinema with you." : "Sign in to CineTrack."}
       </h2>
       <p className="mt-3 text-sm leading-6 text-muted">
         Your collection stays private and syncs through your CineTrack account.
@@ -128,6 +128,7 @@ export default function AccountPanel() {
           reload this page.
         </p>
       )}
+
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
           <label
@@ -143,10 +144,11 @@ export default function AccountPanel() {
             required
             maxLength={254}
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className={baseInputClass}
+            onChange={(e) => setEmail(e.target.value)}
+            className={inputClass}
           />
         </div>
+
         <div>
           <label
             htmlFor="account-password"
@@ -157,22 +159,21 @@ export default function AccountPanel() {
           <input
             id="account-password"
             type="password"
-            autoComplete={
-              mode === "register" ? "new-password" : "current-password"
-            }
+            autoComplete={isRegister ? "new-password" : "current-password"}
             required
-            minLength={mode === "register" ? 12 : 1}
+            minLength={isRegister ? 12 : 1}
             maxLength={72}
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            className={baseInputClass}
+            onChange={(e) => setPassword(e.target.value)}
+            className={inputClass}
           />
-          {mode === "register" && (
+          {isRegister && (
             <p className="mt-2 text-xs text-muted">
               Use at least 12 characters.
             </p>
           )}
         </div>
+
         {error && (
           <p role="alert" className="text-sm leading-6 text-muted">
             {error}
@@ -183,6 +184,7 @@ export default function AccountPanel() {
             {cinemaError}
           </p>
         )}
+
         <button
           type="submit"
           disabled={isSubmitting}
@@ -190,20 +192,21 @@ export default function AccountPanel() {
         >
           {isSubmitting
             ? "Please wait…"
-            : mode === "register"
+            : isRegister
               ? "Create account"
               : "Sign in"}
         </button>
       </form>
+
       <button
         type="button"
         onClick={() => {
-          setMode(mode === "register" ? "login" : "register");
+          setMode(isRegister ? "login" : "register");
           setError("");
         }}
         className="mt-5 text-sm text-muted underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
       >
-        {mode === "register"
+        {isRegister
           ? "Already have an account? Sign in"
           : "New to CineTrack? Create an account"}
       </button>
@@ -211,6 +214,9 @@ export default function AccountPanel() {
   );
 }
 
+/**
+ * Displays profile overview, public cinema share link, and edit toggle.
+ */
 function ProfileSettings({ user, updateProfile }) {
   const [isEditing, setIsEditing] = useState(!user.handle);
   const [message, setMessage] = useState("");
@@ -316,6 +322,9 @@ function ProfileSettings({ user, updateProfile }) {
   );
 }
 
+/**
+ * Form to update handle, display name, and privacy status.
+ */
 function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
   const [handle, setHandle] = useState(user.handle || "");
   const [displayName, setDisplayName] = useState(user.displayName || "");
@@ -405,7 +414,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
             maxLength={50}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="min-h-11 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className={inputClass}
             placeholder="e.g. Alex Rivera"
           />
         </div>
@@ -421,7 +430,7 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
             id="account-privacy"
             value={collectionPrivacy}
             onChange={(e) => setCollectionPrivacy(e.target.value)}
-            className="min-h-11 w-full rounded-lg border border-line bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className={inputClass}
           >
             <option value="private">
               Private (Only you can view your collection)
@@ -461,9 +470,13 @@ function ProfileEditForm({ user, updateProfile, onDone, onCancel }) {
   );
 }
 
+/**
+ * Manages friend requests, friends list, and initiates Movie Night Match.
+ */
 function FriendsManager() {
   const { getFriends, sendFriendRequest, acceptFriendRequest, removeFriend } =
     useCineTrack();
+
   const [data, setData] = useState({ friends: [], incoming: [], outgoing: [] });
   const [loading, setLoading] = useState(true);
   const [targetHandle, setTargetHandle] = useState("");
@@ -472,6 +485,18 @@ function FriendsManager() {
   const [error, setError] = useState("");
   const [activeMatchFriend, setActiveMatchFriend] = useState(null);
 
+  async function refreshFriends() {
+    try {
+      const result = await getFriends();
+      setData(result || { friends: [], incoming: [], outgoing: [] });
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not reload friends list.",
+      );
+    }
+  }
+
+  // Load friends on initial render
   useEffect(() => {
     let cancelled = false;
 
@@ -479,7 +504,7 @@ function FriendsManager() {
       try {
         const result = await getFriends();
         if (!cancelled) {
-          setData(result);
+          setData(result || { friends: [], incoming: [], outgoing: [] });
           setLoading(false);
         }
       } catch (err) {
@@ -498,77 +523,37 @@ function FriendsManager() {
     };
   }, [getFriends]);
 
-  async function refreshFriends() {
+  // Shared helper to run friend actions cleanly
+  async function runFriendAction(actionFn, successMessage) {
+    setMessage("");
+    setError("");
     try {
-      const result = await getFriends();
-      setData(result);
+      await actionFn();
+      if (successMessage) setMessage(successMessage);
+      await refreshFriends();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not reload friends list.",
+        err instanceof Error ? err.message : "Action could not be completed.",
       );
     }
   }
 
   async function handleSendRequest(event) {
     event.preventDefault();
-    if (!targetHandle.trim()) return;
+    const handle = targetHandle.trim().toLowerCase();
+    if (!handle) return;
 
     setIsSubmitting(true);
-    setMessage("");
-    setError("");
-
-    try {
-      const res = await sendFriendRequest(targetHandle.trim().toLowerCase());
-      if (res.status === "accepted") {
-        setMessage(
-          `You are now friends with @${targetHandle.trim().toLowerCase()}!`,
-        );
+    await runFriendAction(async () => {
+      const res = await sendFriendRequest(handle);
+      if (res?.status === "accepted") {
+        setMessage(`You are now friends with @${handle}!`);
       } else {
-        setMessage(
-          `Friend request sent to @${targetHandle.trim().toLowerCase()}.`,
-        );
+        setMessage(`Friend request sent to @${handle}.`);
       }
       setTargetHandle("");
-      await refreshFriends();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not send friend request.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleAccept(id, handle) {
-    setMessage("");
-    setError("");
-    try {
-      await acceptFriendRequest(id);
-      setMessage(`Accepted friend request from @${handle}.`);
-      await refreshFriends();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not accept request.",
-      );
-    }
-  }
-
-  async function handleRemove(id, handle, isRequest = false) {
-    setMessage("");
-    setError("");
-    try {
-      await removeFriend(id);
-      setMessage(
-        isRequest
-          ? `Request with @${handle} cancelled.`
-          : `Removed @${handle} from your friends.`,
-      );
-      await refreshFriends();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not update friendship.",
-      );
-    }
+    });
+    setIsSubmitting(false);
   }
 
   return (
@@ -625,6 +610,7 @@ function FriendsManager() {
         </p>
       )}
 
+      {/* Incoming Requests */}
       {data.incoming && data.incoming.length > 0 && (
         <div className="mt-6 rounded-xl border border-accent/40 bg-accent/5 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-accent">
@@ -650,7 +636,12 @@ function FriendsManager() {
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => handleAccept(item.id, item.requester.handle)}
+                    onClick={() =>
+                      runFriendAction(
+                        () => acceptFriendRequest(item.id),
+                        `Accepted friend request from @${item.requester.handle}.`,
+                      )
+                    }
                     className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-ink transition-opacity hover:opacity-90"
                   >
                     Accept
@@ -658,7 +649,10 @@ function FriendsManager() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleRemove(item.id, item.requester.handle, true)
+                      runFriendAction(
+                        () => removeFriend(item.id),
+                        `Declined request from @${item.requester.handle}.`,
+                      )
                     }
                     className="rounded-md border border-line px-3 py-1 text-xs text-muted hover:text-foreground"
                   >
@@ -671,6 +665,7 @@ function FriendsManager() {
         </div>
       )}
 
+      {/* Outgoing Requests */}
       {data.outgoing && data.outgoing.length > 0 && (
         <div className="mt-4 rounded-xl border border-line bg-background/40 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -682,13 +677,14 @@ function FriendsManager() {
                 key={item.id}
                 className="flex items-center justify-between py-2 text-sm"
               >
-                <div>
-                  <span className="text-muted">@{item.recipient.handle}</span>
-                </div>
+                <span className="text-muted">@{item.recipient.handle}</span>
                 <button
                   type="button"
                   onClick={() =>
-                    handleRemove(item.id, item.recipient.handle, true)
+                    runFriendAction(
+                      () => removeFriend(item.id),
+                      `Request to @${item.recipient.handle} cancelled.`,
+                    )
                   }
                   className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-foreground"
                 >
@@ -700,6 +696,7 @@ function FriendsManager() {
         </div>
       )}
 
+      {/* Friends List */}
       <div className="mt-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted">
           Your Friends ({data.friends ? data.friends.length : 0})
@@ -748,7 +745,12 @@ function FriendsManager() {
                   </a>
                   <button
                     type="button"
-                    onClick={() => handleRemove(item.id, item.friend.handle)}
+                    onClick={() =>
+                      runFriendAction(
+                        () => removeFriend(item.id),
+                        `Removed @${item.friend.handle} from your friends.`,
+                      )
+                    }
                     className="text-xs text-muted hover:text-rose-400"
                   >
                     Remove
@@ -770,6 +772,9 @@ function FriendsManager() {
   );
 }
 
+/**
+ * Modal to discover matching tastes and shared watchlist movies for movie night.
+ */
 function MovieNightMatchModal({ friend, onClose }) {
   const { getMovieNightMatch, saveAccountMovie } = useCineTrack();
   const [data, setData] = useState(null);

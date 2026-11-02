@@ -9,14 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  clearSavedMovies,
-  readSavedMovies,
-} from "@/lib/myCinema";
+import { clearSavedMovies, readSavedMovies } from "@/lib/myCinema";
 
 const DEFAULT_API_URL = "http://localhost:4000";
-const TMDB_POSTER_URL =
-  /^https:\/\/image\.tmdb\.org\/t\/p\/w500\/[A-Za-z0-9_-]+\.(?:jpg|jpeg|png|webp)$/i;
 const CineTrackContext = createContext(null);
 
 class CineTrackApiError extends Error {
@@ -27,210 +22,130 @@ class CineTrackApiError extends Error {
   }
 }
 
+/**
+ * Returns the base backend API URL from env or falls back to localhost.
+ */
 function getApiUrl() {
-  const value =
-    process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim() || DEFAULT_API_URL;
-  let url;
-
+  const value = process.env.NEXT_PUBLIC_CINETRACK_API_URL?.trim() || DEFAULT_API_URL;
   try {
-    url = new URL(value);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error("The Express API URL is not valid.");
-    }
-
-    throw error;
+    const url = new URL(value);
+    return url.origin;
+  } catch {
+    return DEFAULT_API_URL;
   }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("The Express API URL must use HTTP or HTTPS.");
-  }
-
-  return url.origin;
 }
 
+/**
+ * Generic API request helper with error handling and credentials.
+ */
 async function apiRequest(path, options = {}) {
+  const url = `${getApiUrl()}${path}`;
+  const headers = {
+    Accept: "application/json",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...options.headers,
+  };
+
   let response;
   try {
-    response = await fetch(`${getApiUrl()}${path}`, {
+    response = await fetch(url, {
       ...options,
       credentials: "include",
-      headers: {
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers,
-      },
+      headers,
     });
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(
-        "Could not connect to the CineTrack API. Check that it is running and try again.",
-      );
-    }
-
-    throw error;
+  } catch {
+    throw new Error(
+      "Could not connect to the CineTrack API. Check that it is running and try again.",
+    );
   }
 
   let payload = null;
   if (response.status !== 204) {
     try {
       payload = await response.json();
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error("The CineTrack API returned an unreadable response.");
-      }
-
-      throw error;
+    } catch {
+      throw new Error("The CineTrack API returned an unreadable response.");
     }
   }
 
   if (!response.ok) {
-    throw new CineTrackApiError(
+    const message =
       typeof payload?.error === "string"
         ? payload.error
-        : `The CineTrack API returned HTTP ${response.status}.`,
-      response.status,
-    );
-  }
-
-  return payload;
-}
-
-function isAccountUser(user) {
-  return (
-    typeof user === "object" &&
-    user !== null &&
-    typeof user.id === "string" &&
-    typeof user.email === "string"
-  );
-}
-
-function isAccountMovie(movie) {
-  return (
-    typeof movie === "object" &&
-    movie !== null &&
-    Number.isInteger(movie.id) &&
-    movie.id > 0 &&
-    typeof movie.title === "string" &&
-    typeof movie.status === "string" &&
-    (movie.posterUrl === null || typeof movie.posterUrl === "string") &&
-    (movie.releaseYear === null || typeof movie.releaseYear === "string") &&
-    (movie.rating === null || Number.isInteger(movie.rating)) &&
-    typeof movie.review === "string"
-  );
-}
-
-function parseAccountMovies(payload) {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !Array.isArray(payload.movies) ||
-    !payload.movies.every(isAccountMovie)
-  ) {
-    throw new Error("The CineTrack API returned an invalid My Cinema collection.");
-  }
-
-  return payload.movies;
-}
-
-function parseRecommendations(payload) {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !Number.isInteger(payload.activityCount) ||
-    payload.activityCount < 0 ||
-    !Array.isArray(payload.basedOn) ||
-    !payload.basedOn.every(
-      (genre) =>
-        typeof genre === "object" &&
-        genre !== null &&
-        Number.isInteger(genre.id) &&
-        genre.id > 0 &&
-        typeof genre.name === "string" &&
-        genre.name.trim().length > 0,
-    ) ||
-    !Array.isArray(payload.movies) ||
-    !payload.movies.every(
-      (movie) =>
-        typeof movie === "object" &&
-        movie !== null &&
-        Number.isInteger(movie.tmdbId) &&
-        movie.tmdbId > 0 &&
-        typeof movie.title === "string" &&
-        movie.title.trim().length > 0 &&
-        (movie.releaseYear === null ||
-          (typeof movie.releaseYear === "string" &&
-            /^\d{4}$/.test(movie.releaseYear))) &&
-        (movie.posterUrl === null ||
-          (typeof movie.posterUrl === "string" &&
-            TMDB_POSTER_URL.test(movie.posterUrl))),
-    )
-  ) {
-    throw new Error("The CineTrack API returned invalid recommendations.");
+        : `The CineTrack API returned HTTP ${response.status}.`;
+    throw new CineTrackApiError(message, response.status);
   }
 
   return payload;
 }
 
 export function CineTrackProvider({ children }) {
+  // authVersion avoids race conditions when switching accounts
   const authVersion = useRef(0);
+
+  // Authentication state
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState("checking");
+
+  // User's movie collection state
   const [accountMovies, setAccountMovies] = useState([]);
   const [cinemaStatus, setCinemaStatus] = useState("loading");
   const [cinemaError, setCinemaError] = useState("");
+
+  // Recommendations state
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationGenres, setRecommendationGenres] = useState([]);
-  const [recommendationActivityCount, setRecommendationActivityCount] =
-    useState(0);
+  const [recommendationActivityCount, setRecommendationActivityCount] = useState(0);
   const [recommendationStatus, setRecommendationStatus] = useState("idle");
   const [recommendationError, setRecommendationError] = useState("");
 
+  // Fetches user's saved movies and auto-syncs any local offline records
   const loadAccountCollection = useCallback(async () => {
     const expectedVersion = authVersion.current;
     setCinemaStatus("loading");
     setCinemaError("");
 
     try {
-      const collection = parseAccountMovies(
-        await apiRequest("/api/me/cinema"),
-      );
-      if (expectedVersion !== authVersion.current) {
-        return;
-      }
+      const payload = await apiRequest("/api/me/cinema");
+      if (expectedVersion !== authVersion.current) return;
 
+      const remoteMovies = Array.isArray(payload?.movies) ? payload.movies : [];
+
+      // Check for offline movies to migrate into user account
       let localMovies = [];
       try {
         localMovies = readSavedMovies();
-      } catch (error) {
-        setAccountMovies(collection);
+      } catch (err) {
+        setAccountMovies(remoteMovies);
         setCinemaStatus("ready");
         setCinemaError(
-          error instanceof Error
-            ? `${error.message} Sign out only after recovering these local records.`
-            : "Local My Cinema records could not be checked for import.",
+          err instanceof Error
+            ? `${err.message} Sign out only after recovering these local records.`
+            : "Local records could not be checked for import.",
         );
         return;
       }
 
+      // If no local movies to import, we're done
       if (localMovies.length === 0) {
-        setAccountMovies(collection);
+        setAccountMovies(remoteMovies);
         setCinemaStatus("ready");
         return;
       }
 
-      const imported = parseAccountMovies(
-        await apiRequest("/api/me/cinema/import", {
-          method: "POST",
-          body: JSON.stringify({ movies: localMovies }),
-        }),
-      );
-      if (expectedVersion !== authVersion.current) {
-        return;
-      }
+      // Import local movies into user's account
+      const importPayload = await apiRequest("/api/me/cinema/import", {
+        method: "POST",
+        body: JSON.stringify({ movies: localMovies }),
+      });
+
+      if (expectedVersion !== authVersion.current) return;
 
       clearSavedMovies();
-      setAccountMovies(imported);
+      const importedMovies = Array.isArray(importPayload?.movies)
+        ? importPayload.movies
+        : remoteMovies;
+      setAccountMovies(importedMovies);
       setCinemaStatus("ready");
       setCinemaError("");
     } catch (error) {
@@ -245,27 +160,26 @@ export function CineTrackProvider({ children }) {
     }
   }, []);
 
+  // Fetches personalized recommendations based on library activity
   const loadRecommendations = useCallback(async () => {
     const expectedVersion = authVersion.current;
     setRecommendationStatus("loading");
     setRecommendationError("");
 
     try {
-      const result = parseRecommendations(
-        await apiRequest("/api/me/recommendations", { cache: "no-store" }),
-      );
-      if (expectedVersion !== authVersion.current) {
-        return;
-      }
+      const result = await apiRequest("/api/me/recommendations", {
+        cache: "no-store",
+      });
+      if (expectedVersion !== authVersion.current) return;
 
-      setRecommendations(result.movies);
-      setRecommendationGenres(result.basedOn);
-      setRecommendationActivityCount(result.activityCount);
+      setRecommendations(Array.isArray(result?.movies) ? result.movies : []);
+      setRecommendationGenres(Array.isArray(result?.basedOn) ? result.basedOn : []);
+      setRecommendationActivityCount(
+        typeof result?.activityCount === "number" ? result.activityCount : 0,
+      );
       setRecommendationStatus("ready");
     } catch (error) {
-      if (expectedVersion !== authVersion.current) {
-        return;
-      }
+      if (expectedVersion !== authVersion.current) return;
 
       setRecommendationStatus("error");
       setRecommendationError(
@@ -276,14 +190,11 @@ export function CineTrackProvider({ children }) {
     }
   }, []);
 
+  // Sets active user and triggers library & recommendations fetch
   const activateAccount = useCallback(
     async (nextUser, expectedVersion) => {
-      if (!isAccountUser(nextUser)) {
-        throw new Error("The CineTrack API returned an invalid account.");
-      }
-      if (expectedVersion !== authVersion.current) {
-        return;
-      }
+      if (!nextUser || typeof nextUser !== "object") return;
+      if (expectedVersion !== authVersion.current) return;
 
       setUser(nextUser);
       setAuthStatus("authenticated");
@@ -293,24 +204,19 @@ export function CineTrackProvider({ children }) {
     [loadAccountCollection, loadRecommendations],
   );
 
+  // Check existing session on initial mount
   useEffect(() => {
     let cancelled = false;
     const expectedVersion = authVersion.current;
 
-    async function loadCurrentAccount() {
+    async function checkAuthSession() {
       try {
         const payload = await apiRequest("/api/auth/me");
-        if (!isAccountUser(payload?.user)) {
-          throw new Error("The CineTrack API returned an invalid account.");
-        }
-
-        if (!cancelled && expectedVersion === authVersion.current) {
+        if (!cancelled && expectedVersion === authVersion.current && payload?.user) {
           await activateAccount(payload.user, expectedVersion);
         }
       } catch (error) {
-        if (cancelled || expectedVersion !== authVersion.current) {
-          return;
-        }
+        if (cancelled || expectedVersion !== authVersion.current) return;
 
         if (error instanceof CineTrackApiError && error.status === 401) {
           setUser(null);
@@ -329,12 +235,13 @@ export function CineTrackProvider({ children }) {
       }
     }
 
-    loadCurrentAccount();
+    checkAuthSession();
     return () => {
       cancelled = true;
     };
   }, [activateAccount]);
 
+  // Auth actions
   const register = useCallback(
     async ({ email, password }) => {
       const payload = await apiRequest("/api/auth/register", {
@@ -379,62 +286,64 @@ export function CineTrackProvider({ children }) {
       method: "PATCH",
       body: JSON.stringify(profileData),
     });
-    if (isAccountUser(payload?.user)) {
+    if (payload?.user) {
       setUser(payload.user);
     }
     return payload?.user;
   }, []);
 
-  const saveAccountMovie = useCallback(async (movie) => {
-    const expectedVersion = authVersion.current;
-    const payload = await apiRequest("/api/me/cinema", {
-      method: "POST",
-      body: JSON.stringify(movie),
-    });
-    if (!isAccountMovie(payload?.movie)) {
-      throw new Error("The CineTrack API returned an invalid saved movie.");
-    }
+  // Library actions
+  const saveAccountMovie = useCallback(
+    async (movie) => {
+      const expectedVersion = authVersion.current;
+      const payload = await apiRequest("/api/me/cinema", {
+        method: "POST",
+        body: JSON.stringify(movie),
+      });
 
-    if (expectedVersion === authVersion.current) {
-      setAccountMovies((currentMovies) => [
-        payload.movie,
-        ...currentMovies.filter((item) => item.id !== payload.movie.id),
-      ]);
-      loadRecommendations();
-    }
-  }, [loadRecommendations]);
+      if (payload?.movie && expectedVersion === authVersion.current) {
+        setAccountMovies((current) => [
+          payload.movie,
+          ...current.filter((item) => item.id !== payload.movie.id),
+        ]);
+        loadRecommendations();
+      }
+    },
+    [loadRecommendations],
+  );
 
-  const updateAccountMovie = useCallback(async (movieId, changes) => {
-    const expectedVersion = authVersion.current;
-    const payload = await apiRequest(`/api/me/cinema/${movieId}`, {
-      method: "PATCH",
-      body: JSON.stringify(changes),
-    });
-    if (!isAccountMovie(payload?.movie)) {
-      throw new Error("The CineTrack API returned an invalid movie update.");
-    }
+  const updateAccountMovie = useCallback(
+    async (movieId, changes) => {
+      const expectedVersion = authVersion.current;
+      const payload = await apiRequest(`/api/me/cinema/${movieId}`, {
+        method: "PATCH",
+        body: JSON.stringify(changes),
+      });
 
-    if (expectedVersion === authVersion.current) {
-      setAccountMovies((currentMovies) =>
-        currentMovies.map((movie) =>
-          movie.id === movieId ? payload.movie : movie,
-        ),
-      );
-      loadRecommendations();
-    }
-  }, [loadRecommendations]);
+      if (payload?.movie && expectedVersion === authVersion.current) {
+        setAccountMovies((current) =>
+          current.map((m) => (m.id === movieId ? payload.movie : m)),
+        );
+        loadRecommendations();
+      }
+    },
+    [loadRecommendations],
+  );
 
-  const removeAccountMovie = useCallback(async (movieId) => {
-    const expectedVersion = authVersion.current;
-    await apiRequest(`/api/me/cinema/${movieId}`, { method: "DELETE" });
-    if (expectedVersion === authVersion.current) {
-      setAccountMovies((currentMovies) =>
-        currentMovies.filter((movie) => movie.id !== movieId),
-      );
-      loadRecommendations();
-    }
-  }, [loadRecommendations]);
+  const removeAccountMovie = useCallback(
+    async (movieId) => {
+      const expectedVersion = authVersion.current;
+      await apiRequest(`/api/me/cinema/${movieId}`, { method: "DELETE" });
 
+      if (expectedVersion === authVersion.current) {
+        setAccountMovies((current) => current.filter((m) => m.id !== movieId));
+        loadRecommendations();
+      }
+    },
+    [loadRecommendations],
+  );
+
+  // Social / Friends actions
   const getFriends = useCallback(async () => {
     return await apiRequest("/api/friends");
   }, []);
@@ -529,6 +438,5 @@ export function useCineTrack() {
   if (!context) {
     throw new Error("useCineTrack must be used inside CineTrackProvider.");
   }
-
   return context;
 }

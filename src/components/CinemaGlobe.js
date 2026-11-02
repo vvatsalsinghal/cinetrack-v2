@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+// 12 featured global cinema destinations with iconic films
 export const GLOBAL_CINEMA_HUBS = [
   {
     id: "india",
@@ -174,7 +175,7 @@ export const GLOBAL_CINEMA_HUBS = [
   },
 ];
 
-// Simplified continent landmass points (lat, lon) for recognizable 3D globe outline
+// Simplified continent landmass points (lat, lon) for the 3D globe outline
 const CONTINENT_POINTS = [
   // North America
   [65, -150], [68, -135], [60, -120], [55, -110], [52, -90], [55, -75], [60, -65],
@@ -204,6 +205,9 @@ const CONTINENT_POINTS = [
   [-34, 150], [-36, 145], [-42, 146], [-38, 175], [-44, 170],
 ];
 
+/**
+ * Projects a spherical coordinate (latitude, longitude) onto a 2D canvas plane.
+ */
 function project3D(lat, lon, R, rotX, rotY, cx, cy) {
   const phi = (lat * Math.PI) / 180;
   const theta = ((lon + rotY) * Math.PI) / 180;
@@ -231,11 +235,11 @@ export default function CinemaGlobe() {
   const hubElementsRef = useRef({});
 
   const [activeHub, setActiveHub] = useState(GLOBAL_CINEMA_HUBS[0]);
-  const [popupPos, setPopupPos] = useState({ x: 260, y: 140 });
+  const [quadrant, setQuadrant] = useState({ isRight: true, isBottom: false });
   const [isHovered, setIsHovered] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
 
-  // Rotation physics & tracking state (starts centered on India, lon 78)
+  // Rotation physics (starts centered on India, lon 78)
   const rotYRef = useRef(-78);
   const rotXRef = useRef(12);
   const targetRotYRef = useRef(-78);
@@ -244,6 +248,18 @@ export default function CinemaGlobe() {
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const projectedHubsRef = useRef([]);
 
+  // Use refs inside animation loop to avoid tearing down the canvas loop on every render
+  const activeHubRef = useRef(activeHub);
+  const isHoveredRef = useRef(isHovered);
+
+  useEffect(() => {
+    activeHubRef.current = activeHub;
+  }, [activeHub]);
+
+  useEffect(() => {
+    isHoveredRef.current = isHovered;
+  }, [isHovered]);
+
   // Auto-align when user clicks a specific hub pill or mini poster
   function focusHub(hub) {
     setActiveHub(hub);
@@ -251,7 +267,7 @@ export default function CinemaGlobe() {
     targetRotXRef.current = Math.max(-25, Math.min(25, hub.lat * 0.4));
   }
 
-  // Pointer event handlers for intuitive 3D mouse/touch interaction
+  // Pointer event handlers for 3D mouse/touch rotation
   function handlePointerDown(e) {
     isPointerDownRef.current = true;
     lastPointerRef.current = { x: e.clientX, y: e.clientY };
@@ -274,12 +290,11 @@ export default function CinemaGlobe() {
       return;
     }
 
-    // When moving cursor freely over the globe, tilt subtly towards the cursor
-    const normX = (mouseX / rect.width) * 2 - 1;
+    // Gentle tilt toward mouse cursor
     const normY = (mouseY / rect.height) * 2 - 1;
     targetRotXRef.current = Math.max(-30, Math.min(30, -normY * 20));
 
-    // Check if mouse is hovering over or very close to any projected country pin
+    // Check proximity to pins to activate nearest hub
     let closestHub = null;
     let minDistance = 38;
 
@@ -293,7 +308,7 @@ export default function CinemaGlobe() {
       }
     }
 
-    if (closestHub && closestHub.id !== activeHub?.id) {
+    if (closestHub && closestHub.id !== activeHubRef.current?.id) {
       setActiveHub(closestHub);
     }
   }
@@ -303,6 +318,7 @@ export default function CinemaGlobe() {
     setIsInteracting(false);
   }
 
+  // Canvas animation & render loop (runs continuously at 60fps)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -318,8 +334,8 @@ export default function CinemaGlobe() {
       rotYRef.current += (targetRotYRef.current - rotYRef.current) * 0.08;
       rotXRef.current += (targetRotXRef.current - rotXRef.current) * 0.08;
 
-      // When the user is not actively dragging or hovering near a pin, maintain a gentle ambient rotation
-      if (!isPointerDownRef.current && !isHovered) {
+      // Gentle ambient rotation when user isn't interacting
+      if (!isPointerDownRef.current && !isHoveredRef.current) {
         targetRotYRef.current += 0.20;
       }
 
@@ -341,7 +357,6 @@ export default function CinemaGlobe() {
       const cx = width / 2;
       const cy = height / 2;
       const R = Math.min(width, height) * 0.40;
-
       const rotY = rotYRef.current;
       const rotX = rotXRef.current;
 
@@ -362,7 +377,7 @@ export default function CinemaGlobe() {
         R * 0.1,
         cx,
         cy,
-        R
+        R,
       );
       sphereGrad.addColorStop(0, "#191d1e");
       sphereGrad.addColorStop(0.7, "#0f1214");
@@ -378,7 +393,7 @@ export default function CinemaGlobe() {
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
-      // 3. Coordinate Graticule (Parallels & Meridians)
+      // 3. Latitude & Longitude Grids
       ctx.lineWidth = 1;
       const latitudes = [-50, -25, 0, 25, 50];
       for (const lat of latitudes) {
@@ -401,7 +416,6 @@ export default function CinemaGlobe() {
         ctx.stroke();
       }
 
-      // Meridians
       for (let lon = -180; lon < 180; lon += 45) {
         ctx.beginPath();
         let first = true;
@@ -422,7 +436,7 @@ export default function CinemaGlobe() {
         ctx.stroke();
       }
 
-      // 4. Continent Points (World Landmass Dot Grid)
+      // 4. Continent Landmass Points
       for (const [lat, lon] of CONTINENT_POINTS) {
         const p = project3D(lat, lon, R, rotX, rotY, cx, cy);
         if (p.visible) {
@@ -434,26 +448,29 @@ export default function CinemaGlobe() {
         }
       }
 
-      // 5. Global Cinema Hubs & Interactive Pins
-      const projectedHubs = [];
-
-      for (const hub of GLOBAL_CINEMA_HUBS) {
+      // 5. Project all cinema hubs
+      const projectedHubs = GLOBAL_CINEMA_HUBS.map((hub) => {
         const p = project3D(hub.lat, hub.lon, R, rotX, rotY, cx, cy);
-        projectedHubs.push({ hub, ...p });
-      }
-
+        return { hub, ...p };
+      });
       projectedHubsRef.current = projectedHubs;
 
-      // Draw active connecting arcs
-      const activeProj = projectedHubs.find((item) => item.hub.id === activeHub?.id);
+      const currentHub = activeHubRef.current;
+      const activeProj = projectedHubs.find((item) => item.hub.id === currentHub?.id);
 
+      // Connecting curved arcs from active country
       if (activeProj && activeProj.visible) {
-        setPopupPos({ x: activeProj.x, y: activeProj.y });
+        const isRight = activeProj.x > 240;
+        const isBottom = activeProj.y > 250;
+        setQuadrant((prev) => {
+          if (prev.isRight === isRight && prev.isBottom === isBottom) return prev;
+          return { isRight, isBottom };
+        });
 
         for (const item of projectedHubs) {
-          if (item.hub.id !== activeHub.id && item.visible && item.z > 0.2) {
-            const midLat = (activeHub.lat + item.hub.lat) / 2;
-            const midLon = (activeHub.lon + item.hub.lon) / 2;
+          if (item.hub.id !== currentHub.id && item.visible && item.z > 0.2) {
+            const midLat = (currentHub.lat + item.hub.lat) / 2;
+            const midLon = (currentHub.lon + item.hub.lon) / 2;
             const midP = project3D(midLat, midLon, R * 1.14, rotX, rotY, cx, cy);
 
             ctx.beginPath();
@@ -468,14 +485,13 @@ export default function CinemaGlobe() {
         }
       }
 
-      // Render each country hub pin and anchor tether line
+      // Render pins and glow tethers
       for (const item of projectedHubs) {
         if (!item.visible) continue;
 
-        const isCurrent = item.hub.id === activeHub?.id;
+        const isCurrent = item.hub.id === currentHub?.id;
         const baseAlpha = Math.max(0.3, item.z);
 
-        // Glowing vertical tether pointing up to the floating poster
         if (item.z > 0.22) {
           const tetherAlpha = Math.min(1, Math.max(0, (item.z - 0.22) / 0.35));
           ctx.beginPath();
@@ -489,7 +505,6 @@ export default function CinemaGlobe() {
         }
 
         if (isCurrent) {
-          // Pulsing focus rings
           const pulseR = 5 + Math.sin(pulsePhase) * 2.5;
           ctx.beginPath();
           ctx.arc(item.x, item.y, pulseR + 5, 0, Math.PI * 2);
@@ -502,12 +517,10 @@ export default function CinemaGlobe() {
           ctx.fillStyle = "#38bdf8";
           ctx.fill();
 
-          // Country flag tag
           ctx.font = "12px sans-serif";
           ctx.textAlign = "center";
           ctx.fillText(item.hub.flag, item.x, item.y - 14);
         } else {
-          // Subtle country pin
           ctx.beginPath();
           ctx.arc(item.x, item.y, 3.2, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(56, 189, 248, ${baseAlpha * 0.85})`;
@@ -521,7 +534,7 @@ export default function CinemaGlobe() {
         }
       }
 
-      // Update 3D popping mini movie posters overlay in sync with sphere rotation
+      // Update 3D floating mini posters directly via DOM transform for smooth 60fps
       for (const item of projectedHubs) {
         const el = hubElementsRef.current[item.hub.id];
         if (!el) continue;
@@ -530,8 +543,8 @@ export default function CinemaGlobe() {
           const popProgress = Math.min(1, Math.max(0, (item.z - 0.22) / 0.32));
           const bob = Math.sin(pulsePhase * 2 + item.hub.lat * 0.1) * 3.5;
           const scale = 0.72 + popProgress * 0.36;
-          const posX = item.x - 22; // Center 44px card horizontally
-          const posY = item.y - 74 + bob; // Float above country dot
+          const posX = item.x - 22;
+          const posY = item.y - 74 + bob;
 
           el.style.transform = `translate3d(${posX.toFixed(1)}px, ${posY.toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
           el.style.opacity = popProgress.toFixed(3);
@@ -553,11 +566,7 @@ export default function CinemaGlobe() {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [activeHub, isHovered]);
-
-  // Determine smart card alignment so it stays well within bounds
-  const isRightSide = popupPos.x > 240;
-  const isBottomSide = popupPos.y > 250;
+  }, []);
 
   return (
     <div className="relative mx-auto flex w-full max-w-[500px] flex-col items-center">
@@ -581,138 +590,34 @@ export default function CinemaGlobe() {
         className="group relative aspect-square w-full cursor-grab active:cursor-grabbing select-none overflow-hidden rounded-2xl border border-line bg-surface/40 backdrop-blur-sm"
         aria-label="Interactive 3D Earth cinema globe. Move cursor to rotate and explore movies by country."
       >
-        <canvas
-          ref={canvasRef}
-          className="h-full w-full touch-none"
-        />
+        <canvas ref={canvasRef} className="h-full w-full touch-none" />
 
-        {/* 3D Dynamic Popping Mini Movie Posters Layer */}
+        {/* 3D Floating Mini Movie Posters Layer */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 overflow-hidden"
         >
-          {GLOBAL_CINEMA_HUBS.map((hub) => {
-            const isCurrent = hub.id === activeHub?.id;
-            return (
-              <div
-                key={hub.id}
-                ref={(el) => {
-                  if (el) hubElementsRef.current[hub.id] = el;
-                }}
-                onClick={() => focusHub(hub)}
-                style={{
-                  transform: "translate3d(-100px, -100px, 0) scale(0.5)",
-                  opacity: 0,
-                  transition: "opacity 0.25s ease-out, box-shadow 0.2s ease-out",
-                }}
-                className={`group/poster absolute left-0 top-0 h-[64px] w-[44px] cursor-pointer will-change-transform rounded-md border p-0.5 shadow-lg backdrop-blur-xs ${
-                  isCurrent
-                    ? "border-accent bg-accent/20 ring-2 ring-accent/60 shadow-[0_0_16px_rgba(56,189,248,0.45)]"
-                    : "border-sky-400/40 bg-surface/90 hover:border-accent hover:scale-110 shadow-[0_4px_14px_rgba(0,0,0,0.8)]"
-                }`}
-                title={`${hub.movie} (${hub.country})`}
-              >
-                {/* Poster Artwork with fallback container */}
-                <div className="relative h-full w-full overflow-hidden rounded-[4px] bg-gradient-to-br from-slate-800 via-slate-900 to-black p-1 flex flex-col justify-between items-center text-center">
-                  <span className="text-[10px] leading-none">{hub.flag}</span>
-                  <p className="line-clamp-2 text-[7px] font-bold text-accent leading-tight">
-                    {hub.movie}
-                  </p>
-
-                  {/* Real TMDB poster with auto-hide fallback on error */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={hub.posterUrl}
-                    alt={hub.movie}
-                    className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover/poster:scale-110"
-                    loading="lazy"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
-
-                  {/* Country Flag Badge */}
-                  <span className="absolute right-0.5 top-0.5 rounded bg-black/75 px-1 py-0.5 text-[9px] leading-none shadow z-10">
-                    {hub.flag}
-                  </span>
-
-                  {/* Tiny Title Gradient Ribbon */}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-1 text-center z-10">
-                    <p className="line-clamp-1 text-[8px] font-bold text-white">
-                      {hub.movie}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Downward Pointer Stem to Country Dot */}
-                <div className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-accent/90" />
-              </div>
-            );
-          })}
+          {GLOBAL_CINEMA_HUBS.map((hub) => (
+            <FloatingHubPoster
+              key={hub.id}
+              hub={hub}
+              isCurrent={hub.id === activeHub?.id}
+              onFocus={focusHub}
+              registerRef={(el) => {
+                if (el) hubElementsRef.current[hub.id] = el;
+              }}
+            />
+          ))}
         </div>
 
         {/* Floating Country Movie Pop-Up Card */}
-        {activeHub && (
-          <div
-            style={{
-              position: "absolute",
-              left: isRightSide ? "16px" : "auto",
-              right: isRightSide ? "auto" : "16px",
-              top: isBottomSide ? "16px" : "auto",
-              bottom: isBottomSide ? "auto" : "16px",
-            }}
-            className="pointer-events-auto z-20 w-[240px] sm:w-[270px] animate-in fade-in zoom-in-95 rounded-xl border border-line bg-surface/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-200"
-          >
-            <div className="mb-2.5 flex items-center justify-between border-b border-line pb-2">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                <span className="text-base" role="img" aria-label={activeHub.country}>
-                  {activeHub.flag}
-                </span>
-                {activeHub.country}
-              </span>
-              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
-                {activeHub.year}
-              </span>
-            </div>
+        <HubDetailsCard
+          hub={activeHub}
+          isRightSide={quadrant.isRight}
+          isBottomSide={quadrant.isBottom}
+        />
 
-            <div className="flex gap-3">
-              {/* Thumbnail Poster */}
-              <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-line/60 bg-gradient-to-br from-slate-800 to-black shadow-md flex items-center justify-center p-1 text-center">
-                <span className="text-xs text-accent font-semibold">{activeHub.flag}</span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={activeHub.posterUrl}
-                  alt={activeHub.movie}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
-                  {activeHub.movie}
-                </h4>
-                <p className="mt-0.5 truncate text-[11px] text-muted">{activeHub.genre}</p>
-                <p className="mt-1.5 line-clamp-2 text-[11px] italic leading-relaxed text-foreground/80">
-                  “{activeHub.quote}”
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2">
-              <Link
-                href={`/search?q=${encodeURIComponent(activeHub.searchQuery)}`}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
-              >
-                Search on CineTrack →
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Ambient Overlay Hint */}
+        {/* Ambient Status Indicator */}
         <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between text-[11px] text-muted/80">
           <span className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
@@ -742,6 +647,126 @@ export default function CinemaGlobe() {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 3D Floating mini poster badge positioned on the globe sphere surface.
+ */
+function FloatingHubPoster({ hub, isCurrent, onFocus, registerRef }) {
+  return (
+    <div
+      ref={registerRef}
+      onClick={() => onFocus(hub)}
+      style={{
+        transform: "translate3d(-100px, -100px, 0) scale(0.5)",
+        opacity: 0,
+        transition: "opacity 0.25s ease-out, box-shadow 0.2s ease-out",
+      }}
+      className={`group/poster absolute left-0 top-0 h-[64px] w-[44px] cursor-pointer will-change-transform rounded-md border p-0.5 shadow-lg backdrop-blur-xs ${
+        isCurrent
+          ? "border-accent bg-accent/20 ring-2 ring-accent/60 shadow-[0_0_16px_rgba(56,189,248,0.45)]"
+          : "border-sky-400/40 bg-surface/90 hover:border-accent hover:scale-110 shadow-[0_4px_14px_rgba(0,0,0,0.8)]"
+      }`}
+      title={`${hub.movie} (${hub.country})`}
+    >
+      <div className="relative h-full w-full overflow-hidden rounded-[4px] bg-gradient-to-br from-slate-800 via-slate-900 to-black p-1 flex flex-col justify-between items-center text-center">
+        <span className="text-[10px] leading-none">{hub.flag}</span>
+        <p className="line-clamp-2 text-[7px] font-bold text-accent leading-tight">
+          {hub.movie}
+        </p>
+
+        {/* TMDB poster with fallback */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={hub.posterUrl}
+          alt={hub.movie}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover/poster:scale-110"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+
+        <span className="absolute right-0.5 top-0.5 rounded bg-black/75 px-1 py-0.5 text-[9px] leading-none shadow z-10">
+          {hub.flag}
+        </span>
+
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-1 text-center z-10">
+          <p className="line-clamp-1 text-[8px] font-bold text-white">
+            {hub.movie}
+          </p>
+        </div>
+      </div>
+
+      <div className="absolute -bottom-1.5 left-1/2 h-0 w-0 -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-accent/90" />
+    </div>
+  );
+}
+
+/**
+ * Overlay card showing full details for the currently active cinema hub.
+ */
+function HubDetailsCard({ hub, isRightSide, isBottomSide }) {
+  if (!hub) return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: isRightSide ? "16px" : "auto",
+        right: isRightSide ? "auto" : "16px",
+        top: isBottomSide ? "16px" : "auto",
+        bottom: isBottomSide ? "auto" : "16px",
+      }}
+      className="pointer-events-auto z-20 w-[240px] sm:w-[270px] animate-in fade-in zoom-in-95 rounded-xl border border-line bg-surface/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-200"
+    >
+      <div className="mb-2.5 flex items-center justify-between border-b border-line pb-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+          <span className="text-base" role="img" aria-label={hub.country}>
+            {hub.flag}
+          </span>
+          {hub.country}
+        </span>
+        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
+          {hub.year}
+        </span>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-line/60 bg-gradient-to-br from-slate-800 to-black shadow-md flex items-center justify-center p-1 text-center">
+          <span className="text-xs text-accent font-semibold">{hub.flag}</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={hub.posterUrl}
+            alt={hub.movie}
+            className="absolute inset-0 h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-sm font-semibold tracking-tight text-foreground">
+            {hub.movie}
+          </h4>
+          <p className="mt-0.5 truncate text-[11px] text-muted">{hub.genre}</p>
+          <p className="mt-1.5 line-clamp-2 text-[11px] italic leading-relaxed text-foreground/80">
+            “{hub.quote}”
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2">
+        <Link
+          href={`/search?q=${encodeURIComponent(hub.searchQuery)}`}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline"
+        >
+          Search on CineTrack →
+        </Link>
       </div>
     </div>
   );

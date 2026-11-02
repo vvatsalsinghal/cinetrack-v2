@@ -8,13 +8,12 @@ import { useCineTrack } from "@/components/CineTrackProvider";
 import {
   getMyCinemaServerSnapshot,
   getMyCinemaSnapshot,
-  MyCinemaStorageError,
   removeSavedMovie,
   subscribeToMyCinema,
   updateMovieStatus,
 } from "@/lib/myCinema";
 
-const statusLabels = {
+const STATUS_LABELS = {
   saved: "Saved for later",
   watching: "Watching",
   finished: "Finished",
@@ -23,24 +22,29 @@ const statusLabels = {
 export default function MyCinemaCollection() {
   const {
     authStatus,
-    accountMovies,
+    accountMovies = [],
     cinemaStatus,
     cinemaError,
     loadAccountCollection,
     updateAccountMovie,
     removeAccountMovie,
-  } = useCineTrack();
+  } = useCineTrack() || {};
+
+  // Subscribe to browser localStorage when signed out
   const snapshot = useSyncExternalStore(
     subscribeToMyCinema,
     getMyCinemaSnapshot,
     getMyCinemaServerSnapshot,
   );
+
   const [actionError, setActionError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pendingMovieId, setPendingMovieId] = useState(null);
+
   const isSignedIn = authStatus === "authenticated";
   const movies = isSignedIn ? accountMovies : snapshot.movies;
 
+  // Removes a movie from either account collection or local browser storage
   async function handleRemove(movieId) {
     setPendingMovieId(movieId);
     try {
@@ -51,21 +55,13 @@ export default function MyCinemaCollection() {
       }
       setActionError("");
     } catch (error) {
-      if (
-        !(error instanceof MyCinemaStorageError) &&
-        !(error instanceof Error)
-      ) {
-        throw error;
-      }
-
-      setActionError(
-        error.message || "This movie could not be removed from My Cinema.",
-      );
+      setActionError(error?.message || "This movie could not be removed from My Cinema.");
     } finally {
       setPendingMovieId(null);
     }
   }
 
+  // Updates status (saved, watching, finished) in account or local storage
   async function handleStatusChange(movieId, status) {
     setPendingMovieId(movieId);
     try {
@@ -76,84 +72,60 @@ export default function MyCinemaCollection() {
       }
       setActionError("");
     } catch (error) {
-      if (
-        !(error instanceof MyCinemaStorageError) &&
-        !(error instanceof Error)
-      ) {
-        throw error;
-      }
-
-      setActionError(
-        error.message || "This movie's status could not be updated.",
-      );
+      setActionError(error?.message || "This movie's status could not be updated.");
     } finally {
       setPendingMovieId(null);
     }
   }
 
-  if (authStatus === "checking") {
+  // 1. Loading State
+  const isLoading =
+    authStatus === "checking" ||
+    (isSignedIn ? cinemaStatus === "loading" : snapshot.status === "loading");
+
+  if (isLoading) {
     return (
       <p role="status" className="text-sm text-muted">
-        Checking your account and loading My Cinema…
+        Loading your cinema collection…
       </p>
     );
   }
 
-  if (isSignedIn && cinemaStatus === "loading") {
-    return (
-      <p role="status" className="text-sm text-muted">
-        Loading your account collection…
-      </p>
-    );
-  }
+  // 2. Error State
+  const errorMessage = isSignedIn
+    ? cinemaStatus === "error" ? cinemaError : null
+    : snapshot.status === "error" ? snapshot.error : null;
 
-  if (isSignedIn && cinemaStatus === "error") {
+  if (errorMessage) {
     return (
       <div className="rounded-xl border border-line bg-surface px-5 py-6">
         <p role="alert" className="text-sm leading-7 text-muted">
-          {cinemaError}
+          {errorMessage}
         </p>
-        <button
-          type="button"
-          onClick={() => loadAccountCollection()}
-          className="mt-4 min-h-10 rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-        >
-          Retry loading My Cinema
-        </button>
+        {isSignedIn && (
+          <button
+            type="button"
+            onClick={() => loadAccountCollection?.()}
+            className="mt-4 min-h-10 rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            Retry loading My Cinema
+          </button>
+        )}
       </div>
     );
   }
 
-  if (!isSignedIn && snapshot.status === "loading") {
-    return (
-      <p role="status" className="text-sm text-muted">
-        Loading your browser collection…
-      </p>
-    );
-  }
-
-  if (!isSignedIn && snapshot.status === "error") {
-    return (
-      <p
-        role="alert"
-        className="rounded-xl border border-line bg-surface px-5 py-6 text-sm leading-7 text-muted"
-      >
-        {snapshot.error}
-      </p>
-    );
-  }
-
-  if (movies.length === 0) {
+  // 3. Empty State (No movies saved yet)
+  if (!movies || movies.length === 0) {
     return (
       <div className="rounded-xl border border-line bg-surface px-5 py-8">
         <p className="text-sm text-muted">
-          Your My Cinema collection is empty. Save a movie from its detail page
-          and it will appear here.
+          Your My Cinema collection is empty. Save a movie from its detail page and it will appear here.
         </p>
         <p className="mt-3 text-xs leading-5 text-muted">
           {isSignedIn
-            ? "Your saved movies will sync to your private account."
-            : "While signed out, movies stay in this browser. Sign in to import them and sync across sessions."}
+            ? "Your saved movies sync to your private account."
+            : "While signed out, movies stay in this browser. Sign in to import and sync them across devices."}
         </p>
         {!isSignedIn && authStatus === "anonymous" && (
           <Link
@@ -163,15 +135,11 @@ export default function MyCinemaCollection() {
             Sign in or create an account
           </Link>
         )}
-        {!isSignedIn && authStatus === "error" && (
-          <p role="alert" className="mt-4 text-sm text-muted">
-            Your account could not be checked. Reload before switching accounts.
-          </p>
-        )}
       </div>
     );
   }
 
+  // 4. Filter movies by status tab
   const filteredMovies =
     statusFilter === "all"
       ? movies
@@ -179,23 +147,21 @@ export default function MyCinemaCollection() {
 
   return (
     <div>
+      {/* Header controls: movie count & status filter dropdown */}
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-muted">
-            {movies.length} {movies.length === 1 ? "movie" : "movies"} in your
-            cinema
+            {movies.length} {movies.length === 1 ? "movie" : "movies"} in your cinema
           </p>
           <p className="mt-2 text-xs text-muted">
             {isSignedIn
               ? "Synced to your private account."
-              : "Stored only in this browser. Sign in to import and sync it."}
+              : "Stored only in this browser. Sign in to import and sync."}
           </p>
         </div>
+
         <div className="flex items-center gap-3">
-          <label
-            htmlFor="my-cinema-status-filter"
-            className="text-sm text-muted"
-          >
+          <label htmlFor="my-cinema-status-filter" className="text-sm text-muted">
             Show
           </label>
           <select
@@ -205,7 +171,7 @@ export default function MyCinemaCollection() {
             className="min-h-10 rounded-lg border border-line bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             <option value="all">All statuses</option>
-            {Object.entries(statusLabels).map(([value, label]) => (
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -213,29 +179,22 @@ export default function MyCinemaCollection() {
           </select>
         </div>
       </div>
+
       {actionError && (
         <p role="alert" className="mb-6 text-sm text-muted">
           {actionError}
         </p>
       )}
-      {isSignedIn && cinemaError && (
-        <p role="alert" className="mb-6 text-sm text-muted">
-          {cinemaError}
-        </p>
-      )}
-      {!isSignedIn && authStatus === "error" && (
-        <p role="alert" className="mb-6 text-sm text-muted">
-          Your local collection is available, but CineTrack could not verify
-          whether you are signed in. Reload the page before switching accounts.
-        </p>
-      )}
+
+      {/* Grid of Saved Movie Cards */}
       {filteredMovies.length === 0 ? (
         <p role="status" className="text-sm text-muted">
-          No movies have the “{statusLabels[statusFilter]}” status.
+          No movies have the “{STATUS_LABELS[statusFilter]}” status.
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
           {filteredMovies.map((savedMovie) => {
+            const isBusy = pendingMovieId === savedMovie.id || authStatus === "error";
             const movie = {
               ...savedMovie,
               id: `tmdb-${savedMovie.id}`,
@@ -247,6 +206,8 @@ export default function MyCinemaCollection() {
             return (
               <div key={savedMovie.id}>
                 <MovieCard movie={movie} />
+
+                {/* Status selector */}
                 <label
                   htmlFor={`movie-status-${savedMovie.id}`}
                   className="mt-4 block text-xs text-muted"
@@ -255,30 +216,25 @@ export default function MyCinemaCollection() {
                 </label>
                 <select
                   id={`movie-status-${savedMovie.id}`}
-                  value={savedMovie.status}
-                  disabled={
-                    pendingMovieId === savedMovie.id || authStatus === "error"
-                  }
-                  onChange={(event) =>
-                    handleStatusChange(savedMovie.id, event.target.value)
-                  }
+                  value={savedMovie.status || "saved"}
+                  disabled={isBusy}
+                  onChange={(event) => handleStatusChange(savedMovie.id, event.target.value)}
                   className="mt-2 min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
-                  {Object.entries(statusLabels).map(([value, label]) => (
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
                     </option>
                   ))}
                 </select>
-                <MovieNotesEditor
-                  movie={savedMovie}
-                  isAccountMovie={isSignedIn}
-                />
+
+                {/* Personal Notes & Star Rating */}
+                <MovieNotesEditor movie={savedMovie} isAccountMovie={isSignedIn} />
+
+                {/* Remove button */}
                 <button
                   type="button"
-                  disabled={
-                    pendingMovieId === savedMovie.id || authStatus === "error"
-                  }
+                  disabled={isBusy}
                   onClick={() => handleRemove(savedMovie.id)}
                   className="mt-3 min-h-10 rounded-lg border border-line px-4 text-sm text-muted transition-colors hover:border-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   aria-label={`Remove ${savedMovie.title} from My Cinema`}

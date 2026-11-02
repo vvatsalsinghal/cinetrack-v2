@@ -1,6 +1,8 @@
+// Storage key and limit for the AI chatbot conversation history
 const CHAT_STORAGE_KEY = "cinetrack.ai-chat.v1";
 const MAX_SAVED_MESSAGES = 50;
 
+// The default greeting shown when you open the AI concierge for the first time
 export const DEFAULT_INITIAL_MESSAGE = {
   id: "welcome-message",
   role: "assistant",
@@ -9,6 +11,7 @@ export const DEFAULT_INITIAL_MESSAGE = {
   timestamp: Date.now(),
 };
 
+// Loads saved chat messages from browser memory (returns default greeting if empty)
 export function loadChatHistory() {
   if (typeof window === "undefined") {
     return [DEFAULT_INITIAL_MESSAGE];
@@ -16,38 +19,30 @@ export function loadChatHistory() {
 
   try {
     const raw = window.localStorage.getItem(CHAT_STORAGE_KEY);
-    if (!raw) {
-      return [DEFAULT_INITIAL_MESSAGE];
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return [DEFAULT_INITIAL_MESSAGE];
-    }
-
-    return parsed;
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) && parsed.length > 0
+      ? parsed
+      : [DEFAULT_INITIAL_MESSAGE];
   } catch {
     return [DEFAULT_INITIAL_MESSAGE];
   }
 }
 
+// Saves messages to browser memory, keeping only the most recent 50 messages to save space
 export function saveChatHistory(messages) {
-  if (typeof window === "undefined" || !Array.isArray(messages)) {
-    return;
-  }
+  if (typeof window === "undefined" || !Array.isArray(messages)) return;
 
   try {
-    const trimmed = messages.slice(-MAX_SAVED_MESSAGES);
-    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(trimmed));
+    const recentMessages = messages.slice(-MAX_SAVED_MESSAGES);
+    window.localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(recentMessages));
   } catch {
-    // Ignore storage quota or security errors gracefully
+    // Gracefully ignore storage full or privacy errors
   }
 }
 
+// Clears the chat history (triggered when you click the reset/refresh button in the chat)
 export function clearChatHistory() {
-  if (typeof window === "undefined") {
-    return;
-  }
+  if (typeof window === "undefined") return;
 
   try {
     window.localStorage.removeItem(CHAT_STORAGE_KEY);
@@ -55,4 +50,3 @@ export function clearChatHistory() {
     // Ignore error
   }
 }
-

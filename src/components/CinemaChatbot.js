@@ -20,6 +20,7 @@ const SUGGESTED_PROMPTS = [
 
 let messageIdSequence = 0;
 
+// Creates a unique chat message object
 function createChatMessage(role, content) {
   messageIdSequence += 1;
   return {
@@ -29,34 +30,116 @@ function createChatMessage(role, content) {
   };
 }
 
-function getInitialLocalMovies() {
-  if (typeof window === "undefined") {
-    return [];
+// Parses bold (**title**) and italic (*note*) text inside message lines
+function formatInlineSpans(text) {
+  if (!text) return null;
+  const tokens = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
+
+  return tokens.map((token, idx) => {
+    if (token.startsWith("**") && token.endsWith("**") && token.length > 4) {
+      return (
+        <strong key={idx} className="font-semibold text-accent">
+          {token.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+      return (
+        <em key={idx} className="italic text-foreground/90">
+          {token.slice(1, -1)}
+        </em>
+      );
+    }
+    return token;
+  });
+}
+
+// Renders markdown paragraphs, bullets, numbered lists, and typing cursor
+function MessageContent({ content, isStreaming }) {
+  if (!content && isStreaming) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-muted text-xs">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+        <span>Curating recommendations…</span>
+      </span>
+    );
   }
-  try {
-    return readSavedMovies();
-  } catch {
-    return [];
-  }
+
+  if (!content) return null;
+
+  const paragraphs = content.split("\n\n");
+
+  return (
+    <>
+      {paragraphs.map((para, pIdx) => {
+        const lines = para.split("\n");
+
+        return (
+          <div key={pIdx} className="mb-2.5 last:mb-0 leading-relaxed">
+            {lines.map((rawLine, lIdx) => {
+              const line = rawLine.trim();
+              if (!line) return null;
+
+              // Section headings (### Title)
+              if (line.startsWith("### ")) {
+                return (
+                  <h4 key={lIdx} className="font-semibold text-foreground text-[13px] mt-2 mb-1">
+                    {formatInlineSpans(line.slice(4))}
+                  </h4>
+                );
+              }
+
+              // Bullet points (- or *)
+              if (line.startsWith("- ") || line.startsWith("* ")) {
+                return (
+                  <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
+                    <span className="text-accent shrink-0 font-bold">•</span>
+                    <span>{formatInlineSpans(line.slice(2))}</span>
+                  </div>
+                );
+              }
+
+              // Numbered list items (1., 2.)
+              const numberMatch = line.match(/^(\d+)\.\s+(.*)/);
+              if (numberMatch) {
+                return (
+                  <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
+                    <span className="text-accent shrink-0 font-semibold">{numberMatch[1]}.</span>
+                    <span>{formatInlineSpans(numberMatch[2])}</span>
+                  </div>
+                );
+              }
+
+              return <p key={lIdx} className="my-0.5">{formatInlineSpans(rawLine)}</p>;
+            })}
+          </div>
+        );
+      })}
+
+      {/* Live typing indicator cursor */}
+      {isStreaming && (
+        <span
+          aria-hidden="true"
+          className="inline-block h-3.5 w-1.5 rounded-sm bg-accent animate-pulse ml-1 align-middle"
+        />
+      )}
+    </>
+  );
 }
 
 export default function CinemaChatbot() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState(() => loadChatHistory());
-  const [localMovies] = useState(() => getInitialLocalMovies());
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activeStreamingId, setActiveStreamingId] = useState(null);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const streamAccumulatorRef = useRef("");
 
-  // Read personal cinema memory from either authenticated account or local storage
+  // Sync personal cinema taste (account movies or local browser movies)
   const { accountMovies = [] } = useCineTrack() || {};
-
-  // Sync watchlist: prioritize account movies, fallback to local storage
-  const activeWatchlist =
-    accountMovies.length > 0 ? accountMovies : localMovies;
+  const activeWatchlist = accountMovies.length > 0 ? accountMovies : readSavedMovies();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -65,17 +148,17 @@ export default function CinemaChatbot() {
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 150);
+      const timer = setTimeout(() => inputRef.current?.focus(), 150);
       return () => clearTimeout(timer);
     }
   }, [isOpen, messages]);
 
+  // Sends message to /api/chat and streams back the AI response word-by-word
   async function handleSendMessage(textToSend) {
     const text = (textToSend || inputValue).trim();
     if (!text || isLoading || activeStreamingId) return;
 
+    // 1. Add user message to state
     const userMessage = createChatMessage("user", text);
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
@@ -84,6 +167,7 @@ export default function CinemaChatbot() {
     setIsLoading(true);
 
     try {
+      // 2. Call backend route handler
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,76 +184,61 @@ export default function CinemaChatbot() {
         }),
       });
 
-      const contentType = response.headers.get("content-type") || "";
-
-      // If server returned an error JSON payload
-      if (!response.ok || contentType.includes("application/json")) {
+      // Handle non-streaming error responses
+      if (!response.ok || response.headers.get("content-type")?.includes("application/json")) {
         const errData = await response.json().catch(() => ({}));
         const errMessage = createChatMessage(
           "assistant",
-          errData.error || errData.reply || `⚠️ Server error (${response.status})`,
+          errData.error || `⚠️ Server error (${response.status})`,
         );
         const updated = [...nextMessages, errMessage];
         setMessages(updated);
         saveChatHistory(updated);
-        setIsLoading(false);
         return;
       }
 
-      // Real-Time Word-by-Word Streaming
+      // 3. Set up real-time stream reader
       const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Stream reader not available");
-      }
+      if (!reader) throw new Error("Stream reader unavailable");
 
       const decoder = new TextDecoder();
       const assistantMessage = createChatMessage("assistant", "");
-      streamAccumulatorRef.current = "";
+      let accumulatedText = "";
 
-      // Immediately activate streaming state and insert assistant bubble with live indicator
       setIsLoading(false);
       setActiveStreamingId(assistantMessage.id);
       setMessages((prev) => [...prev, assistantMessage]);
       scrollToBottom();
 
+      // Read chunks as they arrive from Gemini
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        streamAccumulatorRef.current += chunk;
-        const currentText = streamAccumulatorRef.current;
+        accumulatedText += decoder.decode(value, { stream: true });
+        const currentText = accumulatedText;
 
-        // Update text in real time as tokens arrive
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMessage.id
-              ? { ...m, content: currentText }
-              : m,
+            m.id === assistantMessage.id ? { ...m, content: currentText } : m,
           ),
         );
         scrollToBottom();
       }
 
       const finalContent =
-        streamAccumulatorRef.current.trim() ||
-        "⚠️ Could not retrieve movie recommendations. Please try asking again.";
+        accumulatedText.trim() || "⚠️ Could not retrieve movie recommendations. Please try asking again.";
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessage.id ? { ...m, content: finalContent } : m,
-        ),
-      );
-
-      // Persist the full completed message to localStorage
-      saveChatHistory([
+      const completedMessages = [
         ...nextMessages,
         { ...assistantMessage, content: finalContent },
-      ]);
+      ];
+      setMessages(completedMessages);
+      saveChatHistory(completedMessages);
     } catch {
       const errorMessage = createChatMessage(
         "assistant",
-        "⚠️ Could not connect to CineTrack AI. Please check your internet connection or server logs.",
+        "⚠️ Could not connect to CineTrack AI. Please check your internet connection.",
       );
       const updated = [...nextMessages, errorMessage];
       setMessages(updated);
@@ -185,115 +254,9 @@ export default function CinemaChatbot() {
     setMessages([DEFAULT_INITIAL_MESSAGE]);
   }
 
-  function formatInlineSpans(text) {
-    if (!text) return null;
-    // Split by **bold** or *italic*
-    const tokens = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
-
-    return tokens.map((token, idx) => {
-      if (token.startsWith("**") && token.endsWith("**") && token.length > 4) {
-        return (
-          <strong key={idx} className="font-semibold text-accent">
-            {token.slice(2, -2)}
-          </strong>
-        );
-      }
-      if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
-        return (
-          <em key={idx} className="italic text-foreground/90">
-            {token.slice(1, -1)}
-          </em>
-        );
-      }
-      return token;
-    });
-  }
-
-  // Format message text: converts **bold**, *italic*, bullets, and live cursor
-  function renderFormattedContent(content, isStreamingThisMessage) {
-    if (!content && isStreamingThisMessage) {
-      return (
-        <span className="inline-flex items-center gap-1.5 text-muted text-xs">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
-          <span>Curating recommendations…</span>
-        </span>
-      );
-    }
-
-    if (!content) return null;
-
-    const paragraphs = content.split("\n\n");
-
-    return (
-      <>
-        {paragraphs.map((para, pIdx) => {
-          const lines = para.split("\n");
-
-          return (
-            <div key={pIdx} className="mb-2.5 last:mb-0 leading-relaxed">
-              {lines.map((rawLine, lIdx) => {
-                const line = rawLine.trim();
-                if (!line) return null;
-
-                // Headers (### Header)
-                if (line.startsWith("### ")) {
-                  return (
-                    <h4
-                      key={lIdx}
-                      className="font-semibold text-foreground text-[13px] mt-2 mb-1"
-                    >
-                      {formatInlineSpans(line.slice(4))}
-                    </h4>
-                  );
-                }
-
-                // Unordered list items (- or *)
-                if (line.startsWith("- ") || line.startsWith("* ")) {
-                  return (
-                    <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
-                      <span className="text-accent shrink-0 font-bold">•</span>
-                      <span>{formatInlineSpans(line.slice(2))}</span>
-                    </div>
-                  );
-                }
-
-                // Numbered list items (1. 2.)
-                const matchNumber = line.match(/^(\d+)\.\s+(.*)/);
-                if (matchNumber) {
-                  return (
-                    <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
-                      <span className="text-accent shrink-0 font-semibold">
-                        {matchNumber[1]}.
-                      </span>
-                      <span>{formatInlineSpans(matchNumber[2])}</span>
-                    </div>
-                  );
-                }
-
-                return (
-                  <p key={lIdx} className="my-0.5">
-                    {formatInlineSpans(rawLine)}
-                  </p>
-                );
-              })}
-            </div>
-          );
-        })}
-
-        {/* Live Blinking Typing Cursor */}
-        {isStreamingThisMessage && (
-          <span
-            aria-hidden="true"
-            className="inline-block h-3.5 w-1.5 rounded-sm bg-accent animate-pulse ml-1 align-middle"
-          />
-        )}
-      </>
-    );
-  }
-
   return (
     <>
-      {/* Floating Launcher Button */}
+      {/* Floating Sparkle Button to Open Chat */}
       <div className="fixed bottom-6 right-6 z-50">
         {!isOpen && (
           <button
@@ -302,10 +265,7 @@ export default function CinemaChatbot() {
             aria-label="Open CineTrack AI Concierge"
             className="group relative flex h-14 w-14 items-center justify-center rounded-full border border-accent/40 bg-surface/90 text-accent shadow-[0_0_25px_rgba(56,189,248,0.3)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-accent hover:shadow-[0_0_35px_rgba(56,189,248,0.5)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
           >
-            {/* Pulsing Aura */}
             <span className="absolute -inset-0.5 rounded-full bg-accent/20 blur-sm animate-pulse" />
-
-            {/* AI Sparkle Projector Icon */}
             <svg
               className="relative h-6 w-6 transition-transform group-hover:rotate-12"
               fill="none"
@@ -319,8 +279,6 @@ export default function CinemaChatbot() {
                 d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"
               />
             </svg>
-
-            {/* Tooltip hint on hover */}
             <span className="pointer-events-none absolute right-16 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg border border-line bg-surface/95 px-3 py-1.5 text-xs font-medium text-foreground opacity-0 shadow-lg backdrop-blur-md transition-opacity group-hover:opacity-100">
               CineTrack AI
             </span>
@@ -328,7 +286,7 @@ export default function CinemaChatbot() {
         )}
       </div>
 
-      {/* Floating Chat Window */}
+      {/* Floating Chat Panel */}
       {isOpen && (
         <aside
           aria-label="CineTrack AI Concierge Chat"
@@ -356,19 +314,14 @@ export default function CinemaChatbot() {
             </div>
 
             <div className="flex items-center gap-1">
+              {/* Reset Conversation Button */}
               <button
                 type="button"
                 onClick={handleResetChat}
                 title="Reset conversation"
                 className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground"
               >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -377,24 +330,15 @@ export default function CinemaChatbot() {
                 </svg>
               </button>
 
+              {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
                 title="Close chat"
                 className="rounded-lg p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground"
               >
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -409,9 +353,7 @@ export default function CinemaChatbot() {
               return (
                 <div
                   key={msg.id}
-                  className={`mb-3.5 flex flex-col ${
-                    isUser ? "items-end" : "items-start"
-                  }`}
+                  className={`mb-3.5 flex flex-col ${isUser ? "items-end" : "items-start"}`}
                 >
                   <div
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
@@ -420,13 +362,13 @@ export default function CinemaChatbot() {
                         : "border border-line bg-surface/90 text-foreground"
                     }`}
                   >
-                    {renderFormattedContent(msg.content, isStreamingThis)}
+                    <MessageContent content={msg.content} isStreaming={isStreamingThis} />
                   </div>
                 </div>
               );
             })}
 
-            {/* AI Typing Indicator (only shows for the brief ~300ms before tokens arrive) */}
+            {/* AI Typing Indicator (brief wait before first token) */}
             {isLoading && (
               <div className="mb-3.5 flex items-start">
                 <div className="flex items-center gap-1.5 rounded-2xl border border-line bg-surface/90 px-4 py-3">
@@ -440,7 +382,7 @@ export default function CinemaChatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Suggested Prompt Chips */}
+          {/* Suggested Prompt Chips */}
           {messages.length <= 2 && (
             <div className="flex gap-1.5 overflow-x-auto px-4 py-2 border-t border-line/50 scrollbar-none">
               {SUGGESTED_PROMPTS.map((prompt, i) => (
@@ -479,23 +421,13 @@ export default function CinemaChatbot() {
               aria-label="Send message"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-ink font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
-                />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
               </svg>
             </button>
           </form>
 
-          {/* Watchlist Context Footnote */}
+          {/* Personal Taste Memory Footnote */}
           <div className="border-t border-line/40 px-3 py-1.5 text-center text-[10px] text-muted/70 bg-background/40">
             {activeWatchlist.length > 0 ? (
               <span>

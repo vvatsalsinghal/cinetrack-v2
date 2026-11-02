@@ -1,136 +1,95 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
-function isPreview(value) {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value.voteAverage === null ||
-      (typeof value.voteAverage === "number" &&
-        Number.isFinite(value.voteAverage) &&
-        value.voteAverage >= 0 &&
-        value.voteAverage <= 10)) &&
-    Array.isArray(value.genres) &&
-    value.genres.every((genre) => typeof genre === "string") &&
-    (value.trailerKey === null ||
-      (typeof value.trailerKey === "string" &&
-        /^[A-Za-z0-9_-]{11}$/.test(value.trailerKey)))
-  );
-}
-
 export default function MovieCard({ movie }) {
   const movieId = movie.tmdbId || movie.id;
-  const [previewRequest, setPreviewRequest] = useState(0);
-  const [preview, setPreview] = useState(null);
-  const [previewError, setPreviewError] = useState("");
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [isPointerOver, setIsPointerOver] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const [isPreviewPinned, setIsPreviewPinned] = useState(false);
-  const [isPreviewDismissed, setIsPreviewDismissed] = useState(false);
-  const isPreviewActive =
-    (isPointerOver || isFocused || isPreviewPinned) && !isPreviewDismissed;
+  const movieDetailHref = movie.tmdbId ? `/movie/${movie.tmdbId}` : `/movie/${movieId}`;
 
+  // Preview overlay state
+  const [preview, setPreview] = useState(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
+
+  // 3D holographic tilt on poster hover
   const posterCardRef = useRef(null);
   const [tiltStyle, setTiltStyle] = useState({
     transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
   });
   const [glareStyle, setGlareStyle] = useState({ opacity: 0 });
 
-  useEffect(() => {
-    if (previewRequest === 0 || !movie.tmdbId) {
-      return;
-    }
+  // Loads video trailer and score for the preview card
+  async function loadPreview() {
+    if (preview || isLoadingPreview || !movie.tmdbId) return;
 
-    let cancelled = false;
+    setIsLoadingPreview(true);
+    setPreviewError("");
 
-    async function loadPreview() {
-      setIsLoadingPreview(true);
-      setPreviewError("");
-
-      try {
-        const response = await fetch(`/api/movies/${movie.tmdbId}/preview`);
-        if (!response.ok) {
-          throw new Error("Movie preview details could not be loaded.");
-        }
-
-        const result = await response.json();
-        if (!isPreview(result)) {
-          throw new Error("Movie preview details could not be loaded.");
-        }
-
-        if (!cancelled) {
-          setPreview(result);
-        }
-      } catch {
-        if (!cancelled) {
-          setPreviewError("Preview details are temporarily unavailable.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingPreview(false);
-        }
-      }
-    }
-
-    loadPreview();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [movie.tmdbId, previewRequest]);
-
-  function requestPreview() {
-    if (!preview && !isLoadingPreview && movie.tmdbId) {
-      setPreviewError("");
-      setPreviewRequest((request) => request + 1);
+    try {
+      const response = await fetch(`/api/movies/${movie.tmdbId}/preview`);
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setPreview(data);
+    } catch {
+      setPreviewError("Preview details are temporarily unavailable.");
+    } finally {
+      setIsLoadingPreview(false);
     }
   }
 
+  // Mouse hover handlers
   function handlePointerEnter(event) {
     if (event.pointerType === "mouse") {
-      setIsPreviewDismissed(false);
-      setIsPointerOver(true);
-      requestPreview();
+      setShowPreview(true);
+      loadPreview();
     }
   }
 
+  function handlePointerLeave() {
+    if (!isPinned) {
+      setShowPreview(false);
+    }
+    resetTilt();
+  }
+
+  // Keyboard accessibility
   function handleFocus() {
-    setIsFocused(true);
-    requestPreview();
+    setShowPreview(true);
+    loadPreview();
   }
 
   function handleBlur(event) {
     if (!event.currentTarget.contains(event.relatedTarget)) {
-      setIsFocused(false);
-      setIsPreviewDismissed(false);
+      if (!isPinned) setShowPreview(false);
     }
-  }
-
-  function togglePinnedPreview() {
-    if (isPreviewActive) {
-      setIsPreviewPinned(false);
-      setIsPreviewDismissed(true);
-      return;
-    }
-
-    setIsPreviewDismissed(false);
-    setIsPreviewPinned(true);
-    requestPreview();
   }
 
   function handleKeyDown(event) {
-    if (event.key === "Escape" && isPreviewActive) {
-      setIsPreviewPinned(false);
-      setIsPreviewDismissed(true);
+    if (event.key === "Escape") {
+      setShowPreview(false);
+      setIsPinned(false);
     }
   }
 
+  // Toggle "Preview" button click (pins the trailer open or closes it)
+  function togglePinnedPreview() {
+    if (showPreview) {
+      setShowPreview(false);
+      setIsPinned(false);
+    } else {
+      setShowPreview(true);
+      setIsPinned(true);
+      loadPreview();
+    }
+  }
+
+  // Calculates 3D card tilt angle as the mouse moves across the poster
   function handlePosterMouseMove(event) {
-    if (event.pointerType === "touch" || isPreviewActive) return;
+    if (event.pointerType === "touch" || showPreview) return;
     const rect = posterCardRef.current?.getBoundingClientRect();
     if (!rect) return;
 
@@ -150,7 +109,7 @@ export default function MovieCard({ movie }) {
     });
   }
 
-  function handlePosterMouseLeave() {
+  function resetTilt() {
     setTiltStyle({
       transform: "perspective(800px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
       transition: "transform 0.4s ease-out",
@@ -161,17 +120,11 @@ export default function MovieCard({ movie }) {
     });
   }
 
-  const movieDetailHref = movie.tmdbId ? `/movie/${movie.tmdbId}` : `/movie/${movieId}`;
-
   return (
     <article
       className="group min-w-0"
       onPointerEnter={handlePointerEnter}
-      onPointerLeave={() => {
-        setIsPointerOver(false);
-        setIsPreviewDismissed(false);
-        handlePosterMouseLeave();
-      }}
+      onPointerLeave={handlePointerLeave}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
@@ -179,7 +132,7 @@ export default function MovieCard({ movie }) {
       <div
         ref={posterCardRef}
         onPointerMove={handlePosterMouseMove}
-        onPointerLeave={handlePosterMouseLeave}
+        onPointerLeave={resetTilt}
         style={tiltStyle}
         className="movie-art relative aspect-[2/3] will-change-transform shadow-md transition-shadow duration-300 hover:shadow-[0_12px_32px_rgba(56,189,248,0.18)]"
       >
@@ -190,6 +143,7 @@ export default function MovieCard({ movie }) {
           className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-200 mix-blend-overlay"
         />
 
+        {/* Poster Image Link */}
         <Link
           href={movieDetailHref}
           className="absolute inset-0 rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
@@ -208,9 +162,10 @@ export default function MovieCard({ movie }) {
           )}
         </Link>
 
+        {/* Video Trailer Preview Overlay */}
         {movie.tmdbId && (
           <>
-            {isPreviewActive && (
+            {showPreview && (
               <div className="absolute inset-0 z-10 bg-black/90">
                 {preview?.trailerKey && (
                   <div className="absolute left-0 top-1/2 aspect-video w-full -translate-y-1/2 overflow-hidden bg-black">
@@ -223,19 +178,18 @@ export default function MovieCard({ movie }) {
                     />
                   </div>
                 )}
+
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/90 to-transparent px-3 pb-3 pt-10 text-white sm:px-4 sm:pb-4">
-                  <p className="text-sm font-semibold leading-snug">
-                    {movie.title}
-                  </p>
+                  <p className="text-sm font-semibold leading-snug">{movie.title}</p>
                   <div className="mt-1 flex flex-wrap gap-x-2 text-xs text-white/80">
-                    {preview?.voteAverage !== null &&
-                      preview?.voteAverage !== undefined && (
-                        <span>TMDB {preview.voteAverage.toFixed(1)} / 10</span>
-                      )}
+                    {preview?.voteAverage !== null && preview?.voteAverage !== undefined && (
+                      <span>TMDB {preview.voteAverage.toFixed(1)} / 10</span>
+                    )}
                     {preview?.genres?.length > 0 && (
                       <span>{preview.genres.slice(0, 3).join(" · ")}</span>
                     )}
                   </div>
+
                   {isLoadingPreview && (
                     <p role="status" className="mt-2 text-xs text-white/70">
                       Loading preview…
@@ -254,19 +208,22 @@ export default function MovieCard({ movie }) {
                 </div>
               </div>
             )}
+
+            {/* Preview Button */}
             <button
               type="button"
               onClick={togglePinnedPreview}
-              aria-label={`${isPreviewActive ? "Close" : "Preview"} ${movie.title} trailer`}
-              aria-pressed={isPreviewActive}
+              aria-label={`${showPreview ? "Close" : "Preview"} ${movie.title} trailer`}
+              aria-pressed={showPreview}
               className="absolute right-2 top-2 z-20 flex min-h-9 items-center gap-1.5 rounded-full border border-white/25 bg-black/75 px-3 text-xs font-medium text-white backdrop-blur transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
-              {isPreviewActive ? "Close" : "Preview"}
+              {showPreview ? "Close" : "Preview"}
             </button>
           </>
         )}
       </div>
 
+      {/* Movie Details (Title, Year, Source) */}
       <div className="pt-4">
         <Link
           href={movieDetailHref}

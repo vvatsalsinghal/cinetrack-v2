@@ -15,12 +15,19 @@ const LANGUAGE_OPTIONS = [
   { value: "te", label: "Telugu (తెలుగు)" },
 ];
 
-function formatDate(isoString) {
+const LANGUAGE_NAMES = {
+  hi: "Hindi",
+  ta: "Tamil",
+  te: "Telugu",
+  en: "English",
+};
+
+// Formats UTC date string into clean "Nov 2, 2026"
+export function formatNewsDate(isoString) {
+  if (!isoString) return "";
   try {
     const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
+    if (Number.isNaN(date.getTime())) return "";
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -32,17 +39,11 @@ function formatDate(isoString) {
   }
 }
 
-function NewsCard({ article }) {
-  const formattedDate = formatDate(article.publishedAt);
+// Reusable card for rendering a cinema news article
+export function NewsCard({ article }) {
+  const formattedDate = formatNewsDate(article.publishedAt);
   const regionLabel = article.region === "india" ? "India" : "Global";
-  const languageLabel =
-    article.language === "hi"
-      ? "Hindi"
-      : article.language === "ta"
-        ? "Tamil"
-        : article.language === "te"
-          ? "Telugu"
-          : "English";
+  const languageLabel = LANGUAGE_NAMES[article.language] || "English";
 
   return (
     <article className="group flex flex-col justify-between overflow-hidden rounded-xl border border-line bg-surface/60 transition-all hover:border-line/80 hover:bg-surface/90">
@@ -133,21 +134,18 @@ export default async function CinemaPulse({ searchParams }) {
     }
   }
 
+  // Helper to build URL when selecting a filter pill
   const buildFilterHref = (newRegion, newLanguage) => {
     const params = new URLSearchParams();
-    if (newRegion && newRegion !== "all") {
-      params.set("region", newRegion);
-    }
-    if (newLanguage && newLanguage !== "all") {
-      params.set("language", newLanguage);
-    }
+    if (newRegion && newRegion !== "all") params.set("region", newRegion);
+    if (newLanguage && newLanguage !== "all") params.set("language", newLanguage);
     const queryString = params.toString();
     return queryString ? `/news?${queryString}` : "/news";
   };
 
   return (
     <div>
-      {/* Filter Section */}
+      {/* Filter Section (Region & Language pills) */}
       <section
         aria-label="Filter cinema news by region and language"
         className="mb-10 space-y-5 rounded-2xl border border-line bg-surface/50 p-5 sm:p-6"
@@ -241,8 +239,7 @@ export default async function CinemaPulse({ searchParams }) {
                 No cinema news found matching these filters.
               </p>
               <p className="mt-2 text-sm text-muted">
-                Try selecting &ldquo;All Regions&rdquo; or &ldquo;All
-                Languages&rdquo; to browse other stories.
+                Try selecting &ldquo;All Regions&rdquo; or &ldquo;All Languages&rdquo; to browse other stories.
               </p>
               <Link
                 href="/news"
@@ -257,4 +254,3 @@ export default async function CinemaPulse({ searchParams }) {
     </div>
   );
 }
-
