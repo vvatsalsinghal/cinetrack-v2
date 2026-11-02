@@ -5,31 +5,14 @@ import { useCineTrack } from "@/components/CineTrackProvider";
 import { MyCinemaStorageError, updateMovieNotes } from "@/lib/myCinema";
 
 export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
-  const { updateAccountMovie } = useCineTrack();
-  const [sourceMovie, setSourceMovie] = useState({
-    id: movie.id,
-    rating: movie.rating ?? "",
-    review: movie.review ?? "",
-  });
-  const [rating, setRating] = useState(sourceMovie.rating);
-  const [review, setReview] = useState(sourceMovie.review);
+  const { updateAccountMovie, authStatus } = useCineTrack();
+
+  const [rating, setRating] = useState(movie.rating ?? "");
+  const [review, setReview] = useState(movie.review ?? "");
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  if (
-    sourceMovie.id !== movie.id ||
-    sourceMovie.rating !== (movie.rating ?? "") ||
-    sourceMovie.review !== (movie.review ?? "")
-  ) {
-    const nextSourceMovie = {
-      id: movie.id,
-      rating: movie.rating ?? "",
-      review: movie.review ?? "",
-    };
-    setSourceMovie(nextSourceMovie);
-    setRating(nextSourceMovie.rating);
-    setReview(nextSourceMovie.review);
-  }
+  const isSyncDisabled = isSaving || (isAccountMovie && authStatus === "error");
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -41,6 +24,7 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
         rating: rating === "" ? null : Number(rating),
         review,
       };
+
       if (isAccountMovie) {
         await updateAccountMovie(movie.id, updates);
         setMessage("Your private account notes have been saved.");
@@ -90,6 +74,7 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
           </svg>
         </span>
       </summary>
+
       <form onSubmit={handleSubmit} className="space-y-3 border-t border-line p-3">
         <label
           htmlFor={`movie-rating-${movie.id}`}
@@ -101,7 +86,7 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
           id={`movie-rating-${movie.id}`}
           value={rating}
           onChange={(event) => setRating(event.target.value)}
-          disabled={isSaving || authStatus === "error"}
+          disabled={isSyncDisabled}
           className="min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           <option value="">No rating</option>
@@ -111,6 +96,7 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
             </option>
           ))}
         </select>
+
         <label
           htmlFor={`movie-review-${movie.id}`}
           className="block text-xs text-muted"
@@ -121,22 +107,24 @@ export default function MovieNotesEditor({ movie, isAccountMovie = false }) {
           id={`movie-review-${movie.id}`}
           value={review}
           onChange={(event) => setReview(event.target.value)}
-          disabled={isSaving || authStatus === "error"}
+          disabled={isSyncDisabled}
           maxLength={500}
           rows={3}
           placeholder="What did you think?"
           className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         />
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted">{review.length} / 500 characters</p>
           <button
             type="submit"
-            disabled={isSaving || authStatus === "error"}
-            className="min-h-10 rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            disabled={isSyncDisabled}
+            className="min-h-10 rounded-lg border border-line px-4 text-sm text-foreground transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
           >
             {isSaving ? "Saving…" : "Save notes"}
           </button>
         </div>
+
         {message && (
           <p role="status" className="text-xs leading-5 text-muted">
             {message}
