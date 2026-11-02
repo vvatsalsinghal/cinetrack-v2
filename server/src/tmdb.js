@@ -178,7 +178,7 @@ export async function getPopularMovies(
   }
 
   let endpoint = `/movie/popular?language=en-US&page=${page}`;
-  if (industry === "indian" || industry === "IN") {
+  if (industry === "indian" || industry === "IN" || region === "IN") {
     endpoint = `/discover/movie?include_adult=false&language=en-US&page=${page}&sort_by=popularity.desc&with_origin_country=IN`;
   } else if (region) {
     endpoint = `/movie/popular?language=en-US&page=${page}&region=${encodeURIComponent(region)}`;

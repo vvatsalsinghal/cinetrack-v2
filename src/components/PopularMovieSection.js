@@ -116,22 +116,49 @@ export default function PopularMovieSection() {
 
     async function loadPopularMovies() {
       try {
-        const apiUrl = getApiUrl();
         const queryString = activeChannelConfig.queryParams
           ? `?${activeChannelConfig.queryParams}`
           : "";
 
-        const response = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
-          headers: { Accept: "application/json" },
-          signal: controller.signal,
-        });
+        // First attempt Next.js native API route (/api/movies/popular)
+        // This ensures Vercel production deployment has zero dependency on external Railway backend
+        let response;
+        try {
+          response = await fetch(`/api/movies/popular${queryString}`, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          });
+        } catch {
+          // If relative fetch fails in rare test environments, fallback to configured Express backend
+          const apiUrl = getApiUrl();
+          response = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          });
+        }
+
+        // If internal route returned 404 or non-ok, attempt fallback to Express server
+        if (!response.ok && response.status === 404) {
+          try {
+            const apiUrl = getApiUrl();
+            const fallbackRes = await fetch(`${apiUrl}/api/movies/popular${queryString}`, {
+              headers: { Accept: "application/json" },
+              signal: controller.signal,
+            });
+            if (fallbackRes.ok) {
+              response = fallbackRes;
+            }
+          } catch {
+            // Keep original response
+          }
+        }
 
         let payload;
         try {
           payload = await response.json();
         } catch (error) {
           if (error instanceof SyntaxError) {
-            throw new Error("The Express API returned an unreadable response.");
+            throw new Error("The API returned an unreadable response.");
           }
           throw error;
         }
@@ -140,7 +167,7 @@ export default function PopularMovieSection() {
           throw new Error(
             typeof payload?.error === "string"
               ? payload.error
-              : `The Express API returned HTTP ${response.status}.`,
+              : `The API returned HTTP ${response.status}.`,
           );
         }
 
