@@ -1,5 +1,24 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * CINEMA GLOBE (INTERACTIVE 3D WORLD CINEMA VISUALIZER)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Renders an interactive 3D Earth in the Hero section showcasing iconic global cinema.
+ * - Users can drag to rotate the globe or hover to tilt.
+ * - Clicking a country smoothly spins the Earth to focus that destination.
+ * - Projects real-time 3D pins, orbital connection arcs, and floating movie cards.
+ * 
+ * CORE ARCHITECTURAL CONCEPTS:
+ * 1. Spherical Trigonometry (project3D): Converts (latitude, longitude) into 2D canvas (x, y, z).
+ * 2. LERP (Linear Interpolation): Smoothly glides rotation angles for physical momentum.
+ * 3. High-DPI Canvas Scaling: Uses window.devicePixelRatio for crisp visuals on Retina displays.
+ * 4. DOM Transforms for 60FPS: Floating mini-posters use translate3d instead of canvas repaints.
+ * ==============================================================================
+ */
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
@@ -129,7 +148,7 @@ export const GLOBAL_CINEMA_HUBS = [
     director: "Fernando Meirelles",
     quote: "Fight and you will never survive. Run and you will never escape.",
     searchQuery: "City of God",
-    posterUrl: "https://image.tmdb.org/t/p/w200/k7eYdWvhYQyRQoU2TB2A2Xu2TfD.jpg",
+    posterUrl: "https://image.tmdb.org/t/p/w200/k7eYdWvhYQyRQoU2TB2A2Xu2TD.jpg",
   },
   {
     id: "australia",
@@ -175,7 +194,7 @@ export const GLOBAL_CINEMA_HUBS = [
   },
 ];
 
-// Simplified continent landmass points (lat, lon) for the 3D globe outline
+// Simplified continent landmass outline points (lat, lon)
 const CONTINENT_POINTS = [
   // North America
   [65, -150], [68, -135], [60, -120], [55, -110], [52, -90], [55, -75], [60, -65],
@@ -206,29 +225,10 @@ const CONTINENT_POINTS = [
 ];
 
 /**
- * ==============================================================================
- * 3D SPHERICAL PROJECTION MATH (project3D)
- * ==============================================================================
- * Concept:
- * Converts Earth's coordinates (latitude and longitude) into 2D screen coordinates (x, y).
- *
- * How it works:
- * 1. Convert Lat/Lon degrees to spherical radians (phi and theta).
- * 2. Calculate 3D sphere coordinates:
- *      x0 = cos(lat) * sin(lon)
- *      y0 = sin(lat)
- *      z0 = cos(lat) * cos(lon)
- * 3. Rotate coordinates in 3D space using Euler angles:
- *      Pitch (rotX) tilts the globe up/down.
- *      Yaw (rotY) spins the globe left/right.
- * 4. Project onto 2D canvas:
- *      x = cx + x1 * R (screen horizontal position)
- *      y = cy - y1 * R (screen vertical position, inverted because canvas Y goes down)
- *      visible = z1 > 0 (only points on the front hemisphere facing the user are visible)
- * ==============================================================================
+ * 3D Spherical projection formula:
+ * Converts (latitude, longitude) on a sphere of radius R into 2D screen coordinates.
  */
 function project3D(lat, lon, R, rotX, rotY, cx, cy) {
-  // Convert latitude and longitude from degrees to radians
   const phi = (lat * Math.PI) / 180;
   const theta = ((lon + rotY) * Math.PI) / 180;
 
@@ -237,17 +237,16 @@ function project3D(lat, lon, R, rotX, rotY, cx, cy) {
   const y0 = Math.sin(phi);
   const z0 = Math.cos(phi) * Math.cos(theta);
 
-  // Apply pitch (X-axis rotation)
+  // Apply tilt rotation around X-axis
   const radX = (rotX * Math.PI) / 180;
   const y1 = y0 * Math.cos(radX) - z0 * Math.sin(radX);
   const z1 = y0 * Math.sin(radX) + z0 * Math.cos(radX);
-  const x1 = x0;
 
   return {
-    x: cx + x1 * R,
+    x: cx + x0 * R,
     y: cy - y1 * R,
     z: z1,
-    visible: z1 > 0, // Points with z1 <= 0 are on the back side of the Earth
+    visible: z1 > 0, // Only points on the facing hemisphere are visible
   };
 }
 
@@ -261,7 +260,7 @@ export default function CinemaGlobe() {
   const [isHovered, setIsHovered] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
 
-  // Rotation physics (starts centered on India, lon 78)
+  // Rotation physics (starts centered on India: lon 78)
   const rotYRef = useRef(-78);
   const rotXRef = useRef(12);
   const targetRotYRef = useRef(-78);
@@ -270,7 +269,6 @@ export default function CinemaGlobe() {
   const lastPointerRef = useRef({ x: 0, y: 0 });
   const projectedHubsRef = useRef([]);
 
-  // Use refs inside animation loop to avoid tearing down the canvas loop on every render
   const activeHubRef = useRef(activeHub);
   const isHoveredRef = useRef(isHovered);
 
@@ -282,14 +280,14 @@ export default function CinemaGlobe() {
     isHoveredRef.current = isHovered;
   }, [isHovered]);
 
-  // Auto-align when user clicks a specific hub pill or mini poster
+  // Centers the globe on a selected country
   function focusHub(hub) {
     setActiveHub(hub);
     targetRotYRef.current = -hub.lon;
     targetRotXRef.current = Math.max(-25, Math.min(25, hub.lat * 0.4));
   }
 
-  // Pointer event handlers for 3D mouse/touch rotation
+  // Pointer event handlers for mouse/touch dragging
   function handlePointerDown(e) {
     isPointerDownRef.current = true;
     lastPointerRef.current = { x: e.clientX, y: e.clientY };
@@ -312,11 +310,11 @@ export default function CinemaGlobe() {
       return;
     }
 
-    // Gentle tilt toward mouse cursor
+    // Subtle tilt toward cursor
     const normY = (mouseY / rect.height) * 2 - 1;
     targetRotXRef.current = Math.max(-30, Math.min(30, -normY * 20));
 
-    // Check proximity to pins to activate nearest hub
+    // Hover detection: activate closest visible pin within 38px
     let closestHub = null;
     let minDistance = 38;
 
@@ -341,18 +339,7 @@ export default function CinemaGlobe() {
   }
 
   /**
-   * ==============================================================================
-   * 60FPS CANVAS RENDER LOOP (requestAnimationFrame)
-   * ==============================================================================
-   * Concept:
-   * 1. Linear Interpolation (LERP):
-   *    Instead of snapping instantly to new angles, the current angle smoothly glides
-   *    toward the target angle: current += (target - current) * 0.08.
-   *    This creates a heavy, physical momentum feeling when dragging.
-   * 2. High-DPI Scaling (Retina displays):
-   *    Multiplying canvas resolution by window.devicePixelRatio ensures the globe
-   *    looks razor-sharp on mobile phones, 4K monitors, and MacBooks.
-   * ==============================================================================
+   * 60FPS Canvas Render Loop
    */
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -365,19 +352,18 @@ export default function CinemaGlobe() {
     let pulsePhase = 0;
 
     function render() {
-      // 1. Smooth interpolation (lerp) toward target rotations
+      // 1. Smooth LERP interpolation
       rotYRef.current += (targetRotYRef.current - rotYRef.current) * 0.08;
       rotXRef.current += (targetRotXRef.current - rotXRef.current) * 0.08;
 
-      // 2. Continuous ambient auto-spin when user is idle
+      // 2. Idle auto-rotation
       if (!isPointerDownRef.current && !isHoveredRef.current) {
         targetRotYRef.current += 0.20;
       }
 
-      // Harmonic pulse timer for animated rings
       pulsePhase = (pulsePhase + 0.04) % (Math.PI * 2);
 
-      // 3. Retina display sharpness scaling
+      // 3. Retina display sharpness
       const dpr = window.devicePixelRatio || 1;
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
@@ -397,7 +383,7 @@ export default function CinemaGlobe() {
       const rotY = rotYRef.current;
       const rotX = rotXRef.current;
 
-      // 1. Atmospheric Back Glow
+      // Atmospheric outer glow
       const atmosGrad = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, R * 1.25);
       atmosGrad.addColorStop(0, "rgba(56, 189, 248, 0.08)");
       atmosGrad.addColorStop(0.65, "rgba(56, 189, 248, 0.02)");
@@ -407,33 +393,21 @@ export default function CinemaGlobe() {
       ctx.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
       ctx.fill();
 
-      // 2. Base Sphere & Shading
-      const sphereGrad = ctx.createRadialGradient(
-        cx - R * 0.35,
-        cy - R * 0.35,
-        R * 0.1,
-        cx,
-        cy,
-        R,
-      );
+      // Base sphere & shadow shading
+      const sphereGrad = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
       sphereGrad.addColorStop(0, "#191d1e");
       sphereGrad.addColorStop(0.7, "#0f1214");
       sphereGrad.addColorStop(1, "#080a0c");
-
       ctx.fillStyle = sphereGrad;
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
       ctx.fill();
-
-      // Outer rim edge
       ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
-      // 3. Latitude & Longitude Grids
-      ctx.lineWidth = 1;
-      const latitudes = [-50, -25, 0, 25, 50];
-      for (const lat of latitudes) {
+      // Latitude lines
+      for (const lat of [-50, -25, 0, 25, 50]) {
         ctx.beginPath();
         let first = true;
         for (let lon = -180; lon <= 180; lon += 8) {
@@ -453,6 +427,7 @@ export default function CinemaGlobe() {
         ctx.stroke();
       }
 
+      // Longitude lines
       for (let lon = -180; lon < 180; lon += 45) {
         ctx.beginPath();
         let first = true;
@@ -473,7 +448,7 @@ export default function CinemaGlobe() {
         ctx.stroke();
       }
 
-      // 4. Continent Landmass Points
+      // Continent landmass dots
       for (const [lat, lon] of CONTINENT_POINTS) {
         const p = project3D(lat, lon, R, rotX, rotY, cx, cy);
         if (p.visible) {
@@ -485,7 +460,7 @@ export default function CinemaGlobe() {
         }
       }
 
-      // 5. Project all cinema hubs
+      // Project all cinema destination pins
       const projectedHubs = GLOBAL_CINEMA_HUBS.map((hub) => {
         const p = project3D(hub.lat, hub.lon, R, rotX, rotY, cx, cy);
         return { hub, ...p };
@@ -495,14 +470,11 @@ export default function CinemaGlobe() {
       const currentHub = activeHubRef.current;
       const activeProj = projectedHubs.find((item) => item.hub.id === currentHub?.id);
 
-      // Connecting curved arcs from active country
+      // Connecting arcs from active country
       if (activeProj && activeProj.visible) {
         const isRight = activeProj.x > 240;
         const isBottom = activeProj.y > 250;
-        setQuadrant((prev) => {
-          if (prev.isRight === isRight && prev.isBottom === isBottom) return prev;
-          return { isRight, isBottom };
-        });
+        setQuadrant((prev) => (prev.isRight === isRight && prev.isBottom === isBottom ? prev : { isRight, isBottom }));
 
         for (const item of projectedHubs) {
           if (item.hub.id !== currentHub.id && item.visible && item.z > 0.2) {
@@ -522,7 +494,7 @@ export default function CinemaGlobe() {
         }
       }
 
-      // Render pins and glow tethers
+      // Render destination pins and pulses
       for (const item of projectedHubs) {
         if (!item.visible) continue;
 
@@ -534,9 +506,7 @@ export default function CinemaGlobe() {
           ctx.beginPath();
           ctx.moveTo(item.x, item.y - 2);
           ctx.lineTo(item.x, item.y - 12);
-          ctx.strokeStyle = isCurrent
-            ? `rgba(56, 189, 248, ${0.85 * tetherAlpha})`
-            : `rgba(56, 189, 248, ${0.4 * tetherAlpha})`;
+          ctx.strokeStyle = `rgba(56, 189, 248, ${(isCurrent ? 0.85 : 0.4) * tetherAlpha})`;
           ctx.lineWidth = 1.2;
           ctx.stroke();
         }
@@ -571,7 +541,7 @@ export default function CinemaGlobe() {
         }
       }
 
-      // Update 3D floating mini posters directly via DOM transform for smooth 60fps
+      // Update 3D floating mini posters via translate3d
       for (const item of projectedHubs) {
         const el = hubElementsRef.current[item.hub.id];
         if (!el) continue;
@@ -599,10 +569,7 @@ export default function CinemaGlobe() {
     }
 
     animationFrameId = requestAnimationFrame(render);
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
+    return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
   return (
@@ -630,10 +597,7 @@ export default function CinemaGlobe() {
         <canvas ref={canvasRef} className="h-full w-full touch-none" />
 
         {/* 3D Floating Mini Movie Posters Layer */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-        >
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
           {GLOBAL_CINEMA_HUBS.map((hub) => (
             <FloatingHubPoster
               key={hub.id}
@@ -675,7 +639,7 @@ export default function CinemaGlobe() {
               onClick={() => focusHub(hub)}
               className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-colors ${
                 isSelected
-                  ? "border border-accent/60 bg-accent text-ink font-semibold shadow-sm"
+                  ? "border border-accent/60 bg-accent font-semibold text-ink shadow-sm"
                   : "border border-line bg-surface/80 text-muted hover:border-accent/40 hover:text-foreground"
               }`}
             >
@@ -705,17 +669,16 @@ function FloatingHubPoster({ hub, isCurrent, onFocus, registerRef }) {
       className={`group/poster absolute left-0 top-0 h-[64px] w-[44px] cursor-pointer will-change-transform rounded-md border p-0.5 shadow-lg backdrop-blur-xs ${
         isCurrent
           ? "border-accent bg-accent/20 ring-2 ring-accent/60 shadow-[0_0_16px_rgba(56,189,248,0.45)]"
-          : "border-sky-400/40 bg-surface/90 hover:border-accent hover:scale-110 shadow-[0_4px_14px_rgba(0,0,0,0.8)]"
+          : "border-sky-400/40 bg-surface/90 hover:scale-110 hover:border-accent shadow-[0_4px_14px_rgba(0,0,0,0.8)]"
       }`}
       title={`${hub.movie} (${hub.country})`}
     >
-      <div className="relative h-full w-full overflow-hidden rounded-[4px] bg-gradient-to-br from-slate-800 via-slate-900 to-black p-1 flex flex-col justify-between items-center text-center">
+      <div className="relative flex h-full w-full flex-col items-center justify-between overflow-hidden rounded-[4px] bg-gradient-to-br from-slate-800 via-slate-900 to-black p-1 text-center">
         <span className="text-[10px] leading-none">{hub.flag}</span>
-        <p className="line-clamp-2 text-[7px] font-bold text-accent leading-tight">
+        <p className="line-clamp-2 text-[7px] font-bold leading-tight text-accent">
           {hub.movie}
         </p>
 
-        {/* TMDB poster with fallback */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={hub.posterUrl}
@@ -727,11 +690,11 @@ function FloatingHubPoster({ hub, isCurrent, onFocus, registerRef }) {
           }}
         />
 
-        <span className="absolute right-0.5 top-0.5 rounded bg-black/75 px-1 py-0.5 text-[9px] leading-none shadow z-10">
+        <span className="absolute right-0.5 top-0.5 z-10 rounded bg-black/75 px-1 py-0.5 text-[9px] leading-none shadow">
           {hub.flag}
         </span>
 
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/80 to-transparent p-1 text-center z-10">
+        <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black via-black/80 to-transparent p-1 text-center">
           <p className="line-clamp-1 text-[8px] font-bold text-white">
             {hub.movie}
           </p>
@@ -758,7 +721,7 @@ function HubDetailsCard({ hub, isRightSide, isBottomSide }) {
         top: isBottomSide ? "16px" : "auto",
         bottom: isBottomSide ? "auto" : "16px",
       }}
-      className="pointer-events-auto z-20 w-[240px] sm:w-[270px] animate-in fade-in zoom-in-95 rounded-xl border border-line bg-surface/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-200"
+      className="pointer-events-auto z-20 w-[240px] animate-in fade-in zoom-in-95 rounded-xl border border-line bg-surface/95 p-3.5 shadow-2xl backdrop-blur-md transition-all duration-200 sm:w-[270px]"
     >
       <div className="mb-2.5 flex items-center justify-between border-b border-line pb-2">
         <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
@@ -773,8 +736,8 @@ function HubDetailsCard({ hub, isRightSide, isBottomSide }) {
       </div>
 
       <div className="flex gap-3">
-        <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-line/60 bg-gradient-to-br from-slate-800 to-black shadow-md flex items-center justify-center p-1 text-center">
-          <span className="text-xs text-accent font-semibold">{hub.flag}</span>
+        <div className="relative flex aspect-[2/3] w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line/60 bg-gradient-to-br from-slate-800 to-black p-1 text-center shadow-md">
+          <span className="text-xs font-semibold text-accent">{hub.flag}</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={hub.posterUrl}
