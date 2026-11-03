@@ -6,22 +6,9 @@
  * ==============================================================================
  * 
  * WHAT THIS COMPONENT DOES:
- * Displays the user's personal movie library (saved, watching, finished).
- * 
- * CORE ARCHITECTURAL CONCEPTS DEMONSTRATED HERE:
- * 1. Hybrid Offline/Cloud Storage Bridge:
- *    - When the user is NOT signed in: Reads movies directly from browser `localStorage`
- *      using React 18+'s `useSyncExternalStore` hook for multi-tab synchronization.
- *    - When the user IS signed in: Reads movies from MongoDB via `CineTrackProvider`
- *      context (`accountMovies`).
- * 
- * 2. Status Categorization & Filtering:
- *    Allows sorting movies into "Saved for later", "Watching", and "Finished" states,
- *    updating either MongoDB or local storage depending on auth status.
- * 
- * 3. Double-Click & Race Protection (`pendingMovieId`):
- *    While an item is being deleted or updated, its interactive buttons are disabled
- *    to prevent duplicate network mutations.
+ * Displays the user's personal movie library with status filters (Saved, Watching, Finished).
+ * - Signed In: Syncs with MongoDB via CineTrackProvider (`accountMovies`).
+ * - Guest/Signed Out: Uses browser localStorage with `useSyncExternalStore` for multi-tab sync.
  * ==============================================================================
  */
 
@@ -38,7 +25,6 @@ import {
   updateMovieStatus,
 } from "@/lib/myCinema";
 
-// User-friendly display names for movie watch statuses
 const STATUS_LABELS = {
   saved: "Saved for later",
   watching: "Watching",
@@ -46,7 +32,6 @@ const STATUS_LABELS = {
 };
 
 export default function MyCinemaCollection() {
-  // Grab cloud collection and mutation functions from CineTrack context
   const {
     authStatus,
     accountMovies = [],
@@ -57,32 +42,21 @@ export default function MyCinemaCollection() {
     removeAccountMovie,
   } = useCineTrack() || {};
 
-  /**
-   * useSyncExternalStore (React 18+):
-   * Safely subscribes to browser localStorage outside of React's render tree.
-   * - subscribeToMyCinema: listens for 'storage' events across browser tabs
-   * - getMyCinemaSnapshot: reads the latest parsed items in the browser
-   * - getMyCinemaServerSnapshot: returns safe empty fallback during SSR/prerender
-   */
+  // External store subscription for guest mode localStorage
   const snapshot = useSyncExternalStore(
     subscribeToMyCinema,
     getMyCinemaSnapshot,
     getMyCinemaServerSnapshot,
   );
 
-  // Local component UI state
   const [actionError, setActionError] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pendingMovieId, setPendingMovieId] = useState(null);
 
-  // Determine active data source: cloud account or local browser storage
   const isSignedIn = authStatus === "authenticated";
   const movies = isSignedIn ? accountMovies : snapshot.movies;
 
-  /**
-   * Removes a movie:
-   * Branches depending on whether user is logged in (API) or logged out (localStorage).
-   */
+  // Removes a movie from cloud or local storage
   async function handleRemove(movieId) {
     setPendingMovieId(movieId);
     try {
@@ -99,9 +73,7 @@ export default function MyCinemaCollection() {
     }
   }
 
-  /**
-   * Updates a movie's watch status ('saved' | 'watching' | 'finished').
-   */
+  // Updates watch status (saved, watching, finished)
   async function handleStatusChange(movieId, status) {
     setPendingMovieId(movieId);
     try {
@@ -124,24 +96,18 @@ export default function MyCinemaCollection() {
     (isSignedIn ? cinemaStatus === "loading" : snapshot.status === "loading");
 
   if (isLoading) {
-    return (
-      <p role="status" className="text-sm text-muted">
-        Loading your cinema collection…
-      </p>
-    );
+    return <p role="status" className="py-12 text-sm text-muted">Loading your cinema collection…</p>;
   }
 
   // 2. Error State
   const errorMessage = isSignedIn
-    ? cinemaStatus === "error" ? cinemaError : null
-    : snapshot.status === "error" ? snapshot.error : null;
+    ? (cinemaStatus === "error" ? cinemaError : null)
+    : (snapshot.status === "error" ? snapshot.error : null);
 
   if (errorMessage) {
     return (
       <div className="rounded-xl border border-line bg-surface px-5 py-6">
-        <p role="alert" className="text-sm leading-7 text-muted">
-          {errorMessage}
-        </p>
+        <p role="alert" className="text-sm leading-7 text-muted">{errorMessage}</p>
         {isSignedIn && (
           <button
             type="button"
@@ -155,7 +121,7 @@ export default function MyCinemaCollection() {
     );
   }
 
-  // 3. Empty State (No movies saved yet)
+  // 3. Empty State
   if (!movies || movies.length === 0) {
     return (
       <div className="rounded-xl border border-line bg-surface px-5 py-8">
@@ -179,15 +145,13 @@ export default function MyCinemaCollection() {
     );
   }
 
-  // 4. Filter movies by status tab
+  // 4. Filtered Movies by Status
   const filteredMovies =
-    statusFilter === "all"
-      ? movies
-      : movies.filter((movie) => movie.status === statusFilter);
+    statusFilter === "all" ? movies : movies.filter((m) => m.status === statusFilter);
 
   return (
     <div>
-      {/* Header controls: movie count & status filter dropdown */}
+      {/* Header controls: movie count & status filter */}
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-muted">
@@ -207,12 +171,12 @@ export default function MyCinemaCollection() {
           <select
             id="my-cinema-status-filter"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(e) => setStatusFilter(e.target.value)}
             className="min-h-10 rounded-lg border border-line bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             <option value="all">All statuses</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
+            {Object.entries(STATUS_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>
                 {label}
               </option>
             ))}
@@ -220,15 +184,11 @@ export default function MyCinemaCollection() {
         </div>
       </div>
 
-      {actionError && (
-        <p role="alert" className="mb-6 text-sm text-muted">
-          {actionError}
-        </p>
-      )}
+      {actionError && <p role="alert" className="mb-6 text-sm text-muted">{actionError}</p>}
 
       {/* Grid of Saved Movie Cards */}
       {filteredMovies.length === 0 ? (
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="py-8 text-sm text-muted">
           No movies have the “{STATUS_LABELS[statusFilter]}” status.
         </p>
       ) : (
@@ -258,11 +218,11 @@ export default function MyCinemaCollection() {
                   id={`movie-status-${savedMovie.id}`}
                   value={savedMovie.status || "saved"}
                   disabled={isBusy}
-                  onChange={(event) => handleStatusChange(savedMovie.id, event.target.value)}
+                  onChange={(e) => handleStatusChange(savedMovie.id, e.target.value)}
                   className="mt-2 min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
-                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
+                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>
                       {label}
                     </option>
                   ))}
