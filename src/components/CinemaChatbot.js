@@ -1,5 +1,18 @@
 "use client";
 
+/**
+ * ==============================================================================
+ * CINEMATRACK AI ASSISTANT (FLOATING CLIENT COMPONENT)
+ * ==============================================================================
+ * 
+ * WHAT THIS COMPONENT DOES:
+ * Provides a floating AI cinema concierge available across all pages of the app.
+ * - Streams recommendations in real-time from Gemini AI via Next.js Route Handler.
+ * - Injects user's "My Cinema" saved watchlist so recommendations match their taste.
+ * - Renders streaming markdown (bold titles, lists, headings) with live typing indicator.
+ * ==============================================================================
+ */
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -18,47 +31,47 @@ const SUGGESTED_PROMPTS = [
   "🎯 Recommend a film based on my taste",
 ];
 
-let messageIdSequence = 0;
+let messageCounter = 0;
 
-// Creates a unique chat message object
-function createChatMessage(role, content) {
-  messageIdSequence += 1;
+// Creates a uniquely identified chat message
+function createMessage(role, content) {
+  messageCounter += 1;
   return {
-    id: `${role}-${messageIdSequence}-${Math.random().toString(36).slice(2, 7)}`,
+    id: `${role}-${messageCounter}-${Date.now()}`,
     role,
     content,
   };
 }
 
-// Parses bold (**title**) and italic (*note*) text inside message lines
-function formatInlineSpans(text) {
+// Formats **bold** and *italic* text inside a string
+function formatInlineText(text) {
   if (!text) return null;
-  const tokens = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
+  const parts = text.split(/(\*\*.*?\*\*|\*[^*\n]+?\*)/g);
 
-  return tokens.map((token, idx) => {
-    if (token.startsWith("**") && token.endsWith("**") && token.length > 4) {
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return (
-        <strong key={idx} className="font-semibold text-accent">
-          {token.slice(2, -2)}
+        <strong key={index} className="font-semibold text-accent">
+          {part.slice(2, -2)}
         </strong>
       );
     }
-    if (token.startsWith("*") && token.endsWith("*") && token.length > 2) {
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return (
-        <em key={idx} className="italic text-foreground/90">
-          {token.slice(1, -1)}
+        <em key={index} className="italic text-foreground/90">
+          {part.slice(1, -1)}
         </em>
       );
     }
-    return token;
+    return part;
   });
 }
 
-// Renders markdown paragraphs, bullets, numbered lists, and typing cursor
+// Renders formatted message content with headings, bullets, and typing cursor
 function MessageContent({ content, isStreaming }) {
   if (!content && isStreaming) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-muted text-xs">
+      <span className="inline-flex items-center gap-1.5 text-xs text-muted">
         <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
         <span>Curating recommendations…</span>
       </span>
@@ -71,8 +84,8 @@ function MessageContent({ content, isStreaming }) {
 
   return (
     <>
-      {paragraphs.map((para, pIdx) => {
-        const lines = para.split("\n");
+      {paragraphs.map((paragraph, pIdx) => {
+        const lines = paragraph.split("\n");
 
         return (
           <div key={pIdx} className="mb-2.5 last:mb-0 leading-relaxed">
@@ -80,11 +93,11 @@ function MessageContent({ content, isStreaming }) {
               const line = rawLine.trim();
               if (!line) return null;
 
-              // Section headings (### Title)
+              // Heading (### Title)
               if (line.startsWith("### ")) {
                 return (
-                  <h4 key={lIdx} className="font-semibold text-foreground text-[13px] mt-2 mb-1">
-                    {formatInlineSpans(line.slice(4))}
+                  <h4 key={lIdx} className="mt-2 mb-1 text-[13px] font-semibold text-foreground">
+                    {formatInlineText(line.slice(4))}
                   </h4>
                 );
               }
@@ -92,35 +105,35 @@ function MessageContent({ content, isStreaming }) {
               // Bullet points (- or *)
               if (line.startsWith("- ") || line.startsWith("* ")) {
                 return (
-                  <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
-                    <span className="text-accent shrink-0 font-bold">•</span>
-                    <span>{formatInlineSpans(line.slice(2))}</span>
+                  <div key={lIdx} className="my-0.5 flex items-start gap-1.5 pl-1">
+                    <span className="shrink-0 font-bold text-accent">•</span>
+                    <span>{formatInlineText(line.slice(2))}</span>
                   </div>
                 );
               }
 
-              // Numbered list items (1., 2.)
-              const numberMatch = line.match(/^(\d+)\.\s+(.*)/);
-              if (numberMatch) {
+              // Numbered list item (1. Item)
+              const numMatch = line.match(/^(\d+)\.\s+(.*)/);
+              if (numMatch) {
                 return (
-                  <div key={lIdx} className="flex items-start gap-1.5 pl-1 my-0.5">
-                    <span className="text-accent shrink-0 font-semibold">{numberMatch[1]}.</span>
-                    <span>{formatInlineSpans(numberMatch[2])}</span>
+                  <div key={lIdx} className="my-0.5 flex items-start gap-1.5 pl-1">
+                    <span className="shrink-0 font-semibold text-accent">{numMatch[1]}.</span>
+                    <span>{formatInlineText(numMatch[2])}</span>
                   </div>
                 );
               }
 
-              return <p key={lIdx} className="my-0.5">{formatInlineSpans(rawLine)}</p>;
+              return <p key={lIdx} className="my-0.5">{formatInlineText(rawLine)}</p>;
             })}
           </div>
         );
       })}
 
-      {/* Live typing indicator cursor */}
+      {/* Live typing cursor during streaming */}
       {isStreaming && (
         <span
           aria-hidden="true"
-          className="inline-block h-3.5 w-1.5 rounded-sm bg-accent animate-pulse ml-1 align-middle"
+          className="ml-1 inline-block h-3.5 w-1.5 rounded-sm bg-accent animate-pulse align-middle"
         />
       )}
     </>
@@ -137,14 +150,15 @@ export default function CinemaChatbot() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Sync personal cinema taste (account movies or local browser movies)
+  // Read saved movies from context or browser storage to give the AI taste context
   const { accountMovies = [] } = useCineTrack() || {};
   const activeWatchlist = accountMovies.length > 0 ? accountMovies : readSavedMovies();
 
-  const scrollToBottom = () => {
+  function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }
 
+  // Auto-scroll and focus input when opened or when messages change
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
@@ -153,26 +167,28 @@ export default function CinemaChatbot() {
     }
   }, [isOpen, messages]);
 
-  // Sends message to /api/chat and streams back the AI response word-by-word
+  /**
+   * Sends user message to `/api/chat` and reads the Server-Sent Events (SSE) stream.
+   */
   async function handleSendMessage(textToSend) {
     const text = (textToSend || inputValue).trim();
     if (!text || isLoading || activeStreamingId) return;
 
-    // 1. Add user message to state
-    const userMessage = createChatMessage("user", text);
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    saveChatHistory(nextMessages);
+    // 1. Append user message to state and storage
+    const userMessage = createMessage("user", text);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    saveChatHistory(updatedMessages);
     setInputValue("");
     setIsLoading(true);
 
     try {
-      // 2. Call backend route handler
+      // 2. POST request to Next.js API route
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages,
+          messages: updatedMessages,
           userContext: {
             watchlist: activeWatchlist.map((m) => ({
               title: m.title,
@@ -184,30 +200,25 @@ export default function CinemaChatbot() {
         }),
       });
 
-      // Handle non-streaming error responses
+      // Handle non-streaming JSON errors (e.g. rate limits or server error)
       if (!response.ok || response.headers.get("content-type")?.includes("application/json")) {
         const errData = await response.json().catch(() => ({}));
-        const errMessage = createChatMessage(
+        const errMessage = createMessage(
           "assistant",
           errData.error || `⚠️ Server error (${response.status})`,
         );
-        const updated = [...nextMessages, errMessage];
-        setMessages(updated);
-        saveChatHistory(updated);
+        const nextList = [...updatedMessages, errMessage];
+        setMessages(nextList);
+        saveChatHistory(nextList);
         return;
       }
 
-      // 3. Set up real-time stream reader (ReadableStream & Server-Sent Events)
-      // Concept: Instead of waiting 10 seconds for the entire AI answer,
-      // the server sends chunks of text as Gemini generates them.
+      // 3. Read incoming stream chunks
       const reader = response.body?.getReader();
       if (!reader) throw new Error("Stream reader unavailable");
 
-      // TextDecoder decodes raw binary byte Uint8Arrays into readable text.
-      // { stream: true } ensures multibyte characters (like emojis 🍿 or Hindi characters)
-      // are not broken if a chunk splits between bytes.
       const decoder = new TextDecoder();
-      const assistantMessage = createChatMessage("assistant", "");
+      const assistantMessage = createMessage("assistant", "");
       let accumulatedText = "";
 
       setIsLoading(false);
@@ -215,41 +226,38 @@ export default function CinemaChatbot() {
       setMessages((prev) => [...prev, assistantMessage]);
       scrollToBottom();
 
-      // Read incoming binary chunks in a loop until done === true
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        // Decode the binary chunk and append to accumulated response
         accumulatedText += decoder.decode(value, { stream: true });
         const currentText = accumulatedText;
 
-        // Update the assistant message in React state in real-time
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMessage.id ? { ...m, content: currentText } : m,
+          prev.map((msg) =>
+            msg.id === assistantMessage.id ? { ...msg, content: currentText } : msg,
           ),
         );
         scrollToBottom();
       }
 
       const finalContent =
-        accumulatedText.trim() || "⚠️ Could not retrieve movie recommendations. Please try asking again.";
+        accumulatedText.trim() || "⚠️ Could not retrieve recommendations. Please try asking again.";
 
-      const completedMessages = [
-        ...nextMessages,
+      const completed = [
+        ...updatedMessages,
         { ...assistantMessage, content: finalContent },
       ];
-      setMessages(completedMessages);
-      saveChatHistory(completedMessages);
+      setMessages(completed);
+      saveChatHistory(completed);
     } catch {
-      const errorMessage = createChatMessage(
+      const errMessage = createMessage(
         "assistant",
         "⚠️ Could not connect to CineTrack AI. Please check your internet connection.",
       );
-      const updated = [...nextMessages, errorMessage];
-      setMessages(updated);
-      saveChatHistory(updated);
+      const nextList = [...updatedMessages, errMessage];
+      setMessages(nextList);
+      saveChatHistory(nextList);
     } finally {
       setIsLoading(false);
       setActiveStreamingId(null);
@@ -293,14 +301,14 @@ export default function CinemaChatbot() {
         )}
       </div>
 
-      {/* Floating Chat Panel */}
+      {/* Floating Chat Window */}
       {isOpen && (
         <aside
           aria-label="CineTrack AI Concierge Chat"
           className="fixed bottom-4 right-4 z-50 flex h-[580px] max-h-[85vh] w-[92vw] max-w-[400px] flex-col overflow-hidden rounded-2xl border border-line bg-surface/95 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-5 duration-200"
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-line px-4 py-3.5 bg-background/50">
+          <div className="flex items-center justify-between border-b border-line bg-background/50 px-4 py-3.5">
             <div className="flex items-center gap-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/15 text-accent">
                 ✨
@@ -321,7 +329,6 @@ export default function CinemaChatbot() {
             </div>
 
             <div className="flex items-center gap-1">
-              {/* Reset Conversation Button */}
               <button
                 type="button"
                 onClick={handleResetChat}
@@ -337,7 +344,6 @@ export default function CinemaChatbot() {
                 </svg>
               </button>
 
-              {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
@@ -365,7 +371,7 @@ export default function CinemaChatbot() {
                   <div
                     className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
                       isUser
-                        ? "bg-accent text-ink font-medium"
+                        ? "bg-accent font-medium text-ink"
                         : "border border-line bg-surface/90 text-foreground"
                     }`}
                   >
@@ -375,7 +381,6 @@ export default function CinemaChatbot() {
               );
             })}
 
-            {/* AI Typing Indicator (brief wait before first token) */}
             {isLoading && (
               <div className="mb-3.5 flex items-start">
                 <div className="flex items-center gap-1.5 rounded-2xl border border-line bg-surface/90 px-4 py-3">
@@ -389,9 +394,9 @@ export default function CinemaChatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggested Prompt Chips */}
+          {/* Suggested Starter Prompts */}
           {messages.length <= 2 && (
-            <div className="flex gap-1.5 overflow-x-auto px-4 py-2 border-t border-line/50 scrollbar-none">
+            <div className="flex gap-1.5 overflow-x-auto border-t border-line/50 px-4 py-2 scrollbar-none">
               {SUGGESTED_PROMPTS.map((prompt, i) => (
                 <button
                   key={i}
@@ -411,7 +416,7 @@ export default function CinemaChatbot() {
               e.preventDefault();
               handleSendMessage();
             }}
-            className="border-t border-line p-3 bg-background/60 flex items-center gap-2"
+            className="flex items-center gap-2 border-t border-line bg-background/60 p-3"
           >
             <input
               ref={inputRef}
@@ -426,7 +431,7 @@ export default function CinemaChatbot() {
               type="submit"
               disabled={!inputValue.trim() || isLoading || Boolean(activeStreamingId)}
               aria-label="Send message"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-ink font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent font-semibold text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
@@ -434,8 +439,8 @@ export default function CinemaChatbot() {
             </button>
           </form>
 
-          {/* Personal Taste Memory Footnote */}
-          <div className="border-t border-line/40 px-3 py-1.5 text-center text-[10px] text-muted/70 bg-background/40">
+          {/* Taste Context Indicator */}
+          <div className="border-t border-line/40 bg-background/40 px-3 py-1.5 text-center text-[10px] text-muted/70">
             {activeWatchlist.length > 0 ? (
               <span>
                 Personalized using your{" "}
