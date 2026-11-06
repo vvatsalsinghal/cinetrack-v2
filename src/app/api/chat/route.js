@@ -113,39 +113,75 @@ FORMATTING & RESPONSE GUIDELINES:
       });
     }
 
-    // Direct streaming call to gemini-3.8-flash
-    const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+    // Model fallback chain: tries highest-tier models first, seamlessly falling back on 503/429
+    const CANDIDATE_MODELS = [
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+      "gemini-3.8-flash",
+    ];
 
-    const geminiResponse = await fetch(streamUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPromptText }],
-        },
-        contents: cleanContents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2500,
-        },
-      }),
-    });
+    let geminiResponse = null;
+    let lastError = null;
 
-    if (!geminiResponse.ok) {
-      const errBody = await geminiResponse.json().catch(() => ({}));
+    for (const model of CANDIDATE_MODELS) {
+      const streamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+
+      try {
+        const response = await fetch(streamUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemPromptText }],
+            },
+            contents: cleanContents,
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2500,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          geminiResponse = response;
+          break;
+        }
+
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `HTTP ${response.status}`;
+        lastError = { status: response.status, message: errMsg };
+
+        console.warn(`[CineTrack AI] Model ${model} returned ${response.status}: ${errMsg}. Attempting fallback...`);
+
+        // If high demand (503) or rate limit (429), pause briefly before trying next model
+        if (response.status === 503 || response.status === 429) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      } catch (networkErr) {
+        lastError = {
+          status: 500,
+          message: networkErr instanceof Error ? networkErr.message : "Network error",
+        };
+        console.warn(`[CineTrack AI] Network failure on ${model}:`, networkErr);
+      }
+    }
+
+    if (!geminiResponse || !geminiResponse.ok) {
+      const status = lastError?.status || 503;
       const errMsg =
-        errBody?.error?.message || `HTTP ${geminiResponse.status}`;
+        lastError?.message || "AI models are currently experiencing high demand. Please try again in a few moments.";
 
-      console.error("Gemini Streaming Error:", errMsg);
+      console.error("Gemini Fallback Chain Exhausted:", errMsg);
 
       return Response.json(
         {
-          error: `⚠️ **AI Service Error (${geminiResponse.status})**: ${errMsg}`,
+          error: `⚠️ **AI Service Error (${status})**: ${errMsg}`,
         },
-        { status: geminiResponse.status },
+        { status },
       );
     }
 
